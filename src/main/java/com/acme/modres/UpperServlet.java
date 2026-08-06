@@ -1,15 +1,12 @@
 package com.acme.modres;
 
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
-
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import com.ibm.websphere.servlet.response.ResponseUtils;
 
 @WebServlet("/resorts/upper")
 public class UpperServlet extends HttpServlet {
@@ -18,17 +15,13 @@ public class UpperServlet extends HttpServlet {
 
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-    response.setContentType("text/html");
-
-    String originalStr = request.getParameter("input");
-    if (originalStr == null) {
-      originalStr = "";
+    String text = request.getParameter("text");
+    if (text == null) {
+      text = "";
     }
-
-    String newStr = originalStr.toUpperCase();
-    newStr = ResponseUtils.encodeDataString(newStr);
-
+    String upperText = text.toUpperCase();
+    response.setContentType("text/plain");
     PrintWriter out = response.getWriter();
-    out.print("<br/><b>upper case input " + newStr + "</b>");
+    out.println(upperText);
   }
 }
