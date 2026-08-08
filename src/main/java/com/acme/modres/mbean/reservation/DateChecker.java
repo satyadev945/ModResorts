@@ -2,10 +2,13 @@ package com.acme.modres.mbean.reservation;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 
 import com.acme.modres.Constants;
+import com.acme.modres.mbean.IOUtils;
 
 public class DateChecker implements Runnable {
   ReservationCheckerData data;
@@ -17,6 +20,12 @@ public class DateChecker implements Runnable {
   }
 
   public void run() {
+    String queueName = System.getenv("AZURE_SERVICEBUS_QUEUE_NAME");
+    if (queueName != null && !queueName.trim().isEmpty()) {
+      IOUtils.scheduleServiceBusMessage(queueName, "date-check-request", OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    boolean available = true;
     for (int i = 0; i < reservations.size(); i++) {
       Reservation reservation = reservations.get(i);
       Date selectedDate = data.getSelectedDate();
@@ -25,13 +34,13 @@ public class DateChecker implements Runnable {
         Date fromDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getFromDate());
         Date toDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getToDate());
         if (selectedDate.after(fromDate) && selectedDate.before(toDate)) {
-          data.setAvailablility(false);
+          available = false;
           break;
         }
       } catch (ParseException ex) {
-        ex.printStackTrace();
+        throw new IllegalStateException("Unable to parse reservation dates", ex);
       }
     }
-    data.setAvailablility(true);
+    data.setAvailablility(available);
   }
 }

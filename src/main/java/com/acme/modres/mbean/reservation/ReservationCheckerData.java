@@ -1,14 +1,17 @@
 package com.acme.modres.mbean.reservation;
 
 import java.text.SimpleDateFormat;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Date;
 
 import com.acme.modres.Constants;
+import com.acme.modres.mbean.IOUtils;
 
 public class ReservationCheckerData {
   private ReservationList reservations;
   private Date selectedDate;
-  private boolean available; // changed from Boolean to boolean
+  private boolean available;
 
   public ReservationCheckerData(ReservationList reservations) {
     this.reservations = reservations;
@@ -26,6 +29,11 @@ public class ReservationCheckerData {
   public boolean setSelectedDate(String dateStr) {
     try {
       selectedDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(dateStr);
+      String queueName = System.getenv("AZURE_SERVICEBUS_QUEUE_NAME");
+      if (queueName != null && !queueName.trim().isEmpty()) {
+        IOUtils.scheduleServiceBusMessage(queueName, "reservation-date-selected:" + dateStr,
+            OffsetDateTime.now(ZoneOffset.UTC));
+      }
     } catch (Exception e) {
       return false;
     }
@@ -36,7 +44,7 @@ public class ReservationCheckerData {
     return available;
   }
 
-  public void setAvailablility(boolean available) { // fix parameter type
+  public void setAvailablility(boolean available) {
     this.available = available;
   }
 }
