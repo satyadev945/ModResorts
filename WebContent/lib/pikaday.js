@@ -4,6 +4,53 @@
  * Copyright © 2014 David Bushell | BSD & MIT license | https://github.com/Pikaday/Pikaday
  */
 
+(function () {
+    'use strict';
+
+    /**
+     * AWS CloudWatch structured error logger.
+     * Emits a JSON-formatted log entry to stdout (captured by CloudWatch Logs agent/Lambda),
+     * optionally publishes a custom CloudWatch Metric, and forwards unrecoverable errors
+     * to an SQS Dead Letter Queue when AWS SDK is available in the environment.
+     *
+     * @param {string} context   - Human-readable location / operation name
+     * @param {Error|*} err      - The caught error or rejection value
+     * @param {boolean} [fatal]  - When true the error is forwarded to the SQS DLQ
+     */
+    function logToCloudWatch(context, err, fatal) {
+        var entry = {
+            level: fatal ? 'FATAL' : 'ERROR',
+            timestamp: new Date().toISOString(),
+            service: 'pikaday',
+            context: context,
+            message: (err && err.message) ? err.message : String(err),
+            stack: (err && err.stack) ? err.stack : undefined,
+            awsRegion: (typeof process !== 'undefined' && process.env && process.env.AWS_REGION) || 'us-east-1'
+        };
+        // CloudWatch Logs picks up structured JSON written to stdout/stderr
+        console.error(JSON.stringify(entry));
+
+        // Forward to SQS Dead Letter Queue for unrecoverable errors when AWS SDK is present
+        if (fatal && typeof AWS !== 'undefined' && AWS.SQS) {
+            try {
+                var sqs = new AWS.SQS();
+                var dlqUrl = (typeof process !== 'undefined' && process.env && process.env.ERROR_DLQ_URL) || '';
+                if (dlqUrl) {
+                    sqs.sendMessage({ QueueUrl: dlqUrl, MessageBody: JSON.stringify(entry) }, function (sqsErr) {
+                        if (sqsErr) { console.error(JSON.stringify({ level: 'ERROR', service: 'pikaday', context: 'logToCloudWatch/SQS', message: sqsErr.message })); }
+                    });
+                }
+            } catch (sqsInitErr) {
+                console.error(JSON.stringify({ level: 'ERROR', service: 'pikaday', context: 'logToCloudWatch/SQS-init', message: String(sqsInitErr) }));
+            }
+        }
+    }
+
+    if (typeof window !== 'undefined') { window._pikadayLogToCloudWatch = logToCloudWatch; }
+    if (typeof module !== 'undefined' && module.exports) { module.exports._logToCloudWatch = logToCloudWatch; }
+    if (typeof define === 'function' && define.amd) { define('pikadayCloudWatchLogger', [], function () { return logToCloudWatch; }); }
+}());
+
 (function (root, factory)
 {
     'use strict';
@@ -12,7 +59,11 @@
     if (typeof exports === 'object') {
         // CommonJS module
         // Load moment.js as an optional dependency
-        try { moment = require('moment'); } catch (e) {}
+        try { moment = require('moment'); } catch (e) {
+            // moment.js is optional; log the absence via CloudWatch structured logging
+            var _cwLog = (typeof module !== 'undefined' && module.exports && module.exports._logToCloudWatch) || (typeof window !== 'undefined' && window._pikadayLogToCloudWatch) || function (ctx, err) { console.error(JSON.stringify({ level: 'WARN', service: 'pikaday', context: ctx, message: (err && err.message) ? err.message : String(err), timestamp: new Date().toISOString() })); };
+            _cwLog('pikaday/require-moment', e, false);
+        }
         module.exports = factory(moment);
     } else if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
@@ -20,7 +71,11 @@
         {
             // Load moment.js as an optional dependency
             var id = 'moment';
-            try { moment = req(id); } catch (e) {}
+            try { moment = req(id); } catch (e) {
+                // moment.js is optional in AMD context; log the absence via CloudWatch structured logging
+                var _cwLogAmd = (typeof window !== 'undefined' && window._pikadayLogToCloudWatch) || function (ctx, err) { console.error(JSON.stringify({ level: 'WARN', service: 'pikaday', context: ctx, message: (err && err.message) ? err.message : String(err), timestamp: new Date().toISOString() })); };
+                _cwLogAmd('pikaday/amd-require-moment', e, false);
+            }
             return factory(moment);
         });
     } else {

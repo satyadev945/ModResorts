@@ -39,6 +39,12 @@ import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.servlet.annotation.WebServlet;
 
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
+import software.amazon.awssdk.services.secretsmanager.model.SecretsManagerException;
+
 @WebServlet({ "/resorts/weather" })
 public class WeatherServlet extends HttpServlet {
   private static final long serialVersionUID = 1L;
@@ -46,9 +52,13 @@ public class WeatherServlet extends HttpServlet {
   @Inject
   private ModResortsCustomerInformation customerInfo;
 
-  // local OS environment variable key name. The key value should provide an API
-  // key that will be used to
-  // get weather information from site: http://www.wunderground.com
+  // AWS Secrets Manager secret name for the Weather API key (cr-java-0113).
+  // The secret name is read from the environment variable WEATHER_API_SECRET_NAME,
+  // defaulting to "modresorts/weather/api-key" if not set.
+  private static final String WEATHER_API_SECRET_NAME_ENV = "WEATHER_API_SECRET_NAME";
+  private static final String WEATHER_API_SECRET_NAME_DEFAULT = "modresorts/weather/api-key";
+
+  // Fallback: plain OS environment variable key name kept for backward compatibility.
   private static final String WEATHER_API_KEY = "WEATHER_API_KEY";
 
   private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
@@ -90,6 +100,64 @@ public class WeatherServlet extends HttpServlet {
     }
   }
 
+  /**
+   * Retrieves the Weather API key from AWS Secrets Manager (cr-java-0113).
+   *
+   * <p>The secret name is resolved from the environment variable
+   * {@code WEATHER_API_SECRET_NAME}. If that variable is not set the default
+   * name {@value #WEATHER_API_SECRET_NAME_DEFAULT} is used. The AWS region is
+   * resolved from the environment variable {@code AWS_REGION}; it defaults to
+   * {@code us-east-1} when not set.
+   *
+   * <p>If the secret cannot be retrieved from AWS Secrets Manager (e.g. the
+   * application is running outside AWS during local development), the method
+   * falls back to reading the plain {@code WEATHER_API_KEY} OS environment
+   * variable so that existing behaviour is preserved.
+   *
+   * @return the Weather API key, or {@code null} if it cannot be resolved
+   */
+  private String getWeatherApiKey() {
+    String secretName = System.getenv(WEATHER_API_SECRET_NAME_ENV);
+    if (secretName == null || secretName.trim().isEmpty()) {
+      secretName = WEATHER_API_SECRET_NAME_DEFAULT;
+    }
+
+    String awsRegion = System.getenv("AWS_REGION");
+    if (awsRegion == null || awsRegion.trim().isEmpty()) {
+      awsRegion = "us-east-1";
+    }
+
+    try {
+      SecretsManagerClient client = SecretsManagerClient.builder()
+          .region(Region.of(awsRegion))
+          .build();
+
+      GetSecretValueRequest request = GetSecretValueRequest.builder()
+          .secretId(secretName)
+          .build();
+
+      GetSecretValueResponse response = client.getSecretValue(request);
+      String secretValue = response.secretString();
+      client.close();
+
+      if (secretValue != null && !secretValue.trim().isEmpty()) {
+        logger.log(Level.FINE, "Weather API key successfully retrieved from AWS Secrets Manager (secret: " + secretName + ")");
+        return secretValue.trim();
+      }
+    } catch (SecretsManagerException e) {
+      logger.log(Level.WARNING,
+          "Could not retrieve Weather API key from AWS Secrets Manager (secret: " + secretName
+              + "). Falling back to environment variable. Reason: " + e.getMessage());
+    } catch (Exception e) {
+      logger.log(Level.WARNING,
+          "Unexpected error retrieving Weather API key from AWS Secrets Manager. "
+              + "Falling back to environment variable. Reason: " + e.getMessage());
+    }
+
+    // Fallback: read from plain OS environment variable (backward compatibility)
+    return System.getenv(WEATHER_API_KEY);
+  }
+
   @Override
   protected void doGet(HttpServletRequest request,
       HttpServletResponse response) throws IOException, ServletException {
@@ -106,7 +174,8 @@ public class WeatherServlet extends HttpServlet {
     String city = request.getParameter("selectedCity");
     logger.log(Level.FINE, "requested city is " + city);
 
-    String weatherAPIKey = System.getenv(WEATHER_API_KEY);
+    // Retrieve the API key from AWS Secrets Manager (cr-java-0113)
+    String weatherAPIKey = getWeatherApiKey();
     String mockedKey = mockKey(weatherAPIKey);
     logger.log(Level.FINE, "weatherAPIKey is " + mockedKey);
 

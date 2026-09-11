@@ -5,7 +5,7 @@
   <groupId>com.acme.modres</groupId>
   <artifactId>modresorts</artifactId>
   <version>2.0.0</version>
-  <packaging>war</packaging>
+  <packaging>jar</packaging>
   <name>ModResorts</name>
   <properties>
     <maven.compiler.target>1.8</maven.compiler.target>
@@ -15,18 +15,13 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
   <dependencies>
+    <!-- Replaced javaee-api (provided/external server) with Spring Boot Starter Web (embedded Tomcat) -->
     <dependency>
-      <groupId>javax</groupId>
-      <artifactId>javaee-api</artifactId>
-      <version>7.0</version>
-      <scope>provided</scope>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+      <version>2.7.18</version>
     </dependency>
-    <dependency>
-      <groupId>com.ibm.websphere.appserver</groupId>
-      <artifactId>was_public</artifactId>
-      <version>9.0.0</version>
-      <scope>provided</scope>
-    </dependency>
+    <!-- Embedded Tomcat is included transitively via spring-boot-starter-web -->
     <dependency>
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
@@ -51,57 +46,75 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-test</artifactId>
-      <version>5.3.20</version>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <version>2.7.18</version>
       <scope>test</scope>
     </dependency>
 
-   
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
       <artifactId>log4j-core</artifactId>
       <version>2.14.1</version>
     </dependency>
 
-   
     <dependency>
       <groupId>commons-collections</groupId>
       <artifactId>commons-collections</artifactId>
       <version>3.2.1</version>
     </dependency>
 
-    
     <dependency>
       <groupId>org.springframework</groupId>
-      <artifactId>spring-webmvc</artifactId>
+      <artifactId>spring-context</artifactId>
       <version>5.3.17</version>
     </dependency>
 
-   
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>2.9.10</version>
     </dependency>
 
+    <!-- AWS SDK v2 S3 – replaces hard-coded file-system paths (cr-java-0061) -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>regions</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+
+    <!-- AWS Secrets Manager – replaces hardcoded/env-var secrets (cr-java-0113) -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>secretsmanager</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>sts</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+
   </dependencies>
   <build>
     <plugins>
+      <!-- Spring Boot Maven Plugin: produces self-contained executable JAR with embedded Tomcat -->
       <plugin>
-        <artifactId>maven-war-plugin</artifactId>
-        <version>3.1.0</version>
-        <configuration>
-          <failOnMissingWebXml>false</failOnMissingWebXml>
-          <packagingExcludes>pom.xml, src/, target/, WebContent/</packagingExcludes>
-          <warSourceDirectory>WebContent</warSourceDirectory>
-          <webResources>
-            <resource>
-              <directory>src/main/resources</directory>
-              <targetPath>WEB-INF/classes</targetPath>
-            </resource>
-          </webResources>
-        </configuration>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>2.7.18</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <artifactId>maven-resources-plugin</artifactId>

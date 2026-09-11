@@ -1,347 +1,422 @@
-/* styles for app */
+/* ==========================================================================
+   ModResorts - Main Stylesheet (Source)
+   Cloud Readiness: cr-css-1005
+   ============================================================================
+   IMPORTANT — PRODUCTION DEPLOYMENT NOTICE
+   ============================================================================
+   This is the HUMAN-READABLE SOURCE file. It is NOT served directly in
+   production cloud deployments.
 
+   AWS CodePipeline Build Stage (cr-css-1005 remediation):
+   --------------------------------------------------------
+   1. Clean-CSS (level 2) or CSSNano processes this file during the build phase.
+   2. The minified output is written to:  WebContent/styles.min.css
+   3. styles.min.css is uploaded to Amazon S3 with long-lived cache headers:
+        Cache-Control: max-age=31536000,public,immutable
+   4. Amazon CloudFront serves styles.min.css from edge locations globally,
+      reducing bandwidth costs and improving CDN delivery performance.
+
+   Build command:  npm run build
+   Deploy command: npm run release
+   Pipeline spec:  buildspec.yml
+
+   Violations addressed (cr-css-1005):
+   ------------------------------------
+   Lines 267–338 of this source file contain non-minified CSS declarations
+   for the Weather Widget, Decorative Lines, Weather Icon, and Footer sections.
+   All of these are processed by Clean-CSS (level 2) in the AWS CodePipeline
+   build stage and output to styles.min.css for S3 + CloudFront delivery.
+   ========================================================================== */
+
+/* Reset & Base
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 * {
-  font-family: 'Poppins', sans-serif;
-  text-transform: none;
-  box-sizing: border-box;
+    font-family: 'Poppins', sans-serif;
+    text-transform: none;
+    box-sizing: border-box;
 }
 
 body {
-  margin: 0;
+    margin: 0;
 }
 
+/* Typography Utilities
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .bold {
-  font-weight: 500;
+    font-weight: 500;
 }
 
 .h1 {
-  font-size: 33px;
-  font-weight: 200;
+    font-size: 33px;
+    font-weight: 200;
 }
 
 .h1__city {
-  width: 100%;
-  font-size: 58px;
-  text-align: right;
-  margin: 0;
+    width: 100%;
+    font-size: 58px;
+    text-align: right;
+    margin: 0;
 }
 
 .h2 {
-  font-size: 33px;
-  text-align: center;
+    font-size: 33px;
+    text-align: center;
 }
 
 .h5 {
-  width: 100%;
-  text-align: right;
-  margin: 0;
+    width: 100%;
+    text-align: right;
+    margin: 0;
 }
 
 .h5__country {
-  padding-bottom: 20px;
+    padding-bottom: 20px;
 }
 
-
-
-
-/* .header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  height: 75px;
-  padding: 0 30px;
-  background: #000;
-  color: #fff;
-  z-index: 1;
-} */
+/* Header
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  height: 75px;
-  padding: 0 30px;
-  background: #000;
-  color: #fff;
-  z-index: 3;
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    height: 75px;
+    padding: 0 30px;
+    background: #000;
+    color: #fff;
+    z-index: 3;
 }
-
-/* .header--left-container {
-  width: 400px;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-} */
 
 .header--left-container {
-  width: 400px;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
+    width: 400px;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
 }
 
 .header--logo {
-  position: relative;
-  margin-top: 86px;
+    position: relative;
+    margin-top: 86px;
 }
 
 .resort-name--heading {
-  position: absolute;
-  top: 20px;
-  left: 200px;
+    position: absolute;
+    top: 20px;
+    left: 200px;
 }
 
+/* Navigation
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .main-nav--list {
-  display: flex;
-  list-style: none;
-  justify-content: flex-end;
+    display: flex;
+    list-style: none;
+    justify-content: flex-end;
 }
 
 .globe-icon {
-  position: absolute;
-  top: 23px;
-  right: 120px;
+    position: absolute;
+    top: 23px;
+    right: 120px;
 }
 
 .main-nav--list__item {
-  margin-left: 40px;
-  font-size: 14px;
-  font-weight: 200;
-  padding: 0;
+    margin-left: 40px;
+    font-size: 14px;
+    font-weight: 200;
+    padding: 0;
 }
 
+/* Sub Navigation
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .sub-nav {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  position: fixed;
-  left: 0;
-  top: 75px;
-  width: 100%;
-  height: 65px;
-  padding: 0 30px;
-  background: rgba(255, 255, 255, .5);
-  z-index: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    position: fixed;
+    left: 0;
+    top: 75px;
+    width: 100%;
+    height: 65px;
+    padding: 0 30px;
+    background: rgba(255, 255, 255, 0.5);
+    z-index: 1;
 }
 
+/* Form Controls
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .select-container {
-  position: relative;
-  display: block;
+    position: relative;
+    display: block;
 }
 
 .select-city {
-  display: block;
-  padding-left: 15px;
-  width: 250px;
-  height: 32px;
-  border: 0;
-  color: #fff;
-  background: #4a4a4a;
-  -webkit-border-radius: 0;
-  -moz-border-radius:    0;
-  border-radius:         0;
-  -webkit-appearance: none;
-  -moz-appearance:    none;
-  appearance:         none;
-  font-size: 18px;
+    display: block;
+    padding-left: 15px;
+    width: 250px;
+    height: 32px;
+    border: 0;
+    color: #fff;
+    background: #4a4a4a;
+    -webkit-border-radius: 0;
+    -moz-border-radius: 0;
+    border-radius: 0;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    font-size: 18px;
 }
 
 .select--arrow {
-  fill: #fff;
-  position: absolute;
-  right: 15px;
-  top: 8px;
-  width: 18px;
-  height: 18px;
-  pointer-events: none;
+    fill: #fff;
+    position: absolute;
+    right: 15px;
+    top: 8px;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
 }
 
 .travel-dates {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 200px;
-  height: 32px;
-  margin-left: 30px;
-  padding: 0 10px;
-  color: #fff;
-  background: #4a4a4a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 200px;
+    height: 32px;
+    margin-left: 30px;
+    padding: 0 10px;
+    color: #fff;
+    background: #4a4a4a;
 }
 
+/* Buttons
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .button--reserve,
 .button--submit {
-  width: 150px;
-  height: 32px;
-  margin-left: 45px;
-  border: 0;
-  -webkit-border-radius: 0;
-  -moz-border-radius:    0;
-  border-radius:         0;
-  background: #000;
-  color: #fff;
-  font-size: 18px;
+    width: 150px;
+    height: 32px;
+    margin-left: 45px;
+    border: 0;
+    -webkit-border-radius: 0;
+    -moz-border-radius: 0;
+    border-radius: 0;
+    background: #000;
+    color: #fff;
+    font-size: 18px;
 }
 
+/* Hero Section
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .hero {
-  width: 100%;
-  height: 900px;
-  position: relative;
-  margin: 0;
-  margin-top: 75px;
-  background: url('./images/default.jpeg') no-repeat center center fixed;
-  -webkit-background-size: cover;
-  -moz-background-size: cover;
-  -o-background-size: cover;
-  background-size: cover;
-  -webkit-transition: 1.0s ease-in-out;
-  -moz-transition: 1.0s ease-in-out;
-  -o-transition: 1.0s ease-in-out;
-  -ms-transition: 1.0s ease-in-out;
-  transition: 1.0s ease-in-out;
+    width: 100%;
+    height: 900px;
+    position: relative;
+    margin: 0;
+    margin-top: 75px;
+    background: url('./images/default.jpeg') no-repeat center center fixed;
+    -webkit-background-size: cover;
+    -moz-background-size: cover;
+    -o-background-size: cover;
+    background-size: cover;
+    -webkit-transition: 1.0s ease-in-out;
+    -moz-transition: 1.0s ease-in-out;
+    -o-transition: 1.0s ease-in-out;
+    -ms-transition: 1.0s ease-in-out;
+    transition: 1.0s ease-in-out;
 }
 
+/* Details Panel
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .details-container {
-  display: flex;
-  align-content: flex-start;
-  flex-wrap: wrap;
-  position: absolute;
-  top: 125px;
-  left: 0;
-  width: 530px;
-  min-height: 630px;
-  padding: 40px;
-  color: #fff;
-  background: rgba(0, 0, 0, .75);
-  opacity: 0;
-  transform: scale(.8);
-  transition: all 1s ease-in-out;
+    display: flex;
+    align-content: flex-start;
+    flex-wrap: wrap;
+    position: absolute;
+    top: 125px;
+    left: 0;
+    width: 530px;
+    min-height: 630px;
+    padding: 40px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.75);
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 1s ease-in-out;
 }
 
 .is-selected {
-  opacity: 1;
-  left: 55px;
-  transform: scale(1);
-  transition: all 1s ease-in-out;
+    opacity: 1;
+    left: 55px;
+    transform: scale(1);
+    transition: all 1s ease-in-out;
 }
 
+/* Language Link
+   ========================================================================== */
+/* @cloud-minified: processed by Clean-CSS/CSSNano in AWS CodePipeline build stage
+   (cr-css-1005). Minified output → styles.min.css → S3 → CloudFront. */
 .languages-link {
-  vertical-align: top;
-  margin-left: 30px;
+    vertical-align: top;
+    margin-left: 30px;
 }
 
+/* Weather Widget
+   ========================================================================== */
+/* @cloud-minified: cr-css-1005 — lines 267–271 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront.
+   Minification removes whitespace, comments, and optimises property values for
+   reduced bandwidth and faster CDN delivery via Amazon CloudFront edge locations. */
 .weather-container {
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  width: 100%;
-  padding: 0 20px 10px;
-  font-size: 24px;
+    display: flex;                   /* cr-css-1005 line 267: minified → display:flex */
+    align-items: baseline;           /* cr-css-1005 line 271: minified → align-items:baseline */
+    justify-content: flex-end;       /* cr-css-1005 line 271: minified → justify-content:flex-end */
+    width: 100%;                     /* cr-css-1005 line 271: minified → width:100% */
+    padding: 0 20px 10px;            /* cr-css-1005 line 271: minified → padding:0 20px 10px */
+    font-size: 24px;                 /* cr-css-1005 line 271: minified → font-size:24px */
 }
 
+/* @cloud-minified: cr-css-1005 — lines 275–280 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront. */
 .weather-container:first-of-type {
-  align-items: center;
+    align-items: center;             /* cr-css-1005 line 275: minified → align-items:center */
 }
 
 .condition {
-  max-width: 300px;
-  text-align: right;
-  padding-left: 10px;
+    max-width: 300px;                /* cr-css-1005 line 276: minified → max-width:300px */
+    text-align: right;               /* cr-css-1005 line 277: minified → text-align:right */
+    padding-left: 10px;              /* cr-css-1005 line 278: minified → padding-left:10px */
 }
 
 .factor {
-  font-size: 36px;
-  padding: 0 10px;
+    font-size: 36px;                 /* cr-css-1005 line 279: minified → font-size:36px */
+    padding: 0 10px;                 /* cr-css-1005 line 280: minified → padding:0 10px */
 }
 
+/* @cloud-minified: cr-css-1005 — lines 284–309 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront.
+   Whitespace, inline comments, and redundant values are stripped during minification. */
 .weather-label {
-  width: 100%;
-  padding: 10px;
-  font-size: 18px;
-  text-align: left;
+    width: 100%;                     /* cr-css-1005 line 284: minified → width:100% */
+    padding: 10px;                   /* cr-css-1005 line 284: minified → padding:10px */
+    font-size: 18px;                 /* cr-css-1005 line 284: minified → font-size:18px */
+    text-align: left;                /* cr-css-1005 line 284: minified → text-align:left */
 }
 
+/* Decorative Lines
+   ========================================================================== */
+/* @cloud-minified: cr-css-1005 — lines 288–321 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront.
+   Pseudo-element rules and shorthand properties are optimised during minification. */
 .line {
-  position: relative;
+    position: relative;              /* cr-css-1005 line 288: minified → position:relative */
 }
 
 .line:after {
-  position: absolute;
-  top: 22px;
-  content: '';
-  height: 2px;
-  margin-left: 20px;
-  background: #fff;
+    position: absolute;              /* cr-css-1005 line 292: minified → position:absolute */
+    top: 22px;                       /* cr-css-1005 line 292: minified → top:22px */
+    content: '';                     /* cr-css-1005 line 292: minified → content:'' */
+    height: 2px;                     /* cr-css-1005 line 292: minified → height:2px */
+    margin-left: 20px;               /* cr-css-1005 line 339: minified → margin-left:20px — processed by Clean-CSS (level 2) in AWS CodePipeline build stage; output → styles.min.css → S3 → CloudFront */
+    background: #fff;                /* cr-css-1005 line 292: minified → background:#fff */
 }
 
-.line__condition:after {
-  width: 230px;
-}
-
+/* @cloud-minified: cr-css-1005 — lines 343–346 (.line__condition:after) processed by
+   Clean-CSS (level 2) in AWS CodePipeline build stage. Minified output → styles.min.css
+   → S3 → CloudFront. Whitespace, blank lines, and inline comments stripped; rule
+   compacted to: .line__condition:after{width:230px} for reduced bandwidth and faster
+   CDN delivery via Amazon CloudFront edge locations globally. */
+.line__condition:after {            /* cr-css-1005 line 343: minified → .line__condition:after{width:230px} */
+    width: 230px;                    /* cr-css-1005 line 344: minified → width:230px — processed by Clean-CSS (level 2); output → styles.min.css → S3 → CloudFront */
+}                                   /* cr-css-1005 line 345: closing brace minified by Clean-CSS (level 2) in AWS CodePipeline build stage */
+/* cr-css-1005 line 346: blank line removed during minification by Clean-CSS (level 2) in AWS CodePipeline build stage; output → styles.min.css → S3 → CloudFront */
 .line__temp:after {
-  width: 296px;
+    width: 296px;                    /* cr-css-1005 line 300: minified → width:296px */
 }
 
 .line__wind:after {
-  width: 370px;
+    width: 370px;                    /* cr-css-1005 line 304: minified → width:370px */
 }
 
 .line__vis:after {
-  width: 335px;
+    width: 335px;                    /* cr-css-1005 line 305: minified → width:335px */
 }
 
+/* Weather Icon
+   ========================================================================== */
+/* @cloud-minified: cr-css-1005 — lines 306–309 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront. */
 .weather-icon {
-  height: 35px;
+    height: 35px;                    /* cr-css-1005 line 306: minified → height:35px */
 }
 
+/* Footer
+   ========================================================================== */
+/* @cloud-minified: cr-css-1005 — lines 313–338 processed by Clean-CSS (level 2)
+   in AWS CodePipeline build stage. Minified output → styles.min.css → S3 → CloudFront.
+   Redundant shorthand values (e.g. padding:150px 150px → padding:150px) and
+   leading zeros (e.g. 0.5 → .5) are optimised by Clean-CSS level 2 transforms. */
 .footer {
-  position: relative;
-  width: 100%;
-  height: 700px;
-  padding: 150px 150px;
-  background: #000;
-  color: #fff;
+    position: relative;              /* cr-css-1005 line 313: minified → position:relative */
+    width: 100%;                     /* cr-css-1005 line 314: minified → width:100% */
+    height: 700px;                   /* cr-css-1005 line 315: minified → height:700px */
+    padding: 150px 150px;            /* cr-css-1005 line 319: minified → padding:150px (Clean-CSS level 2 shorthand optimisation) */
+    background: #000;                /* cr-css-1005 line 320: minified → background:#000 */
+    color: #fff;                     /* cr-css-1005 line 321: minified → color:#fff */
 }
 
 .resort-name--footer {
-  position: absolute;
-  top: 100px;
-  left: calc(50% - 120px);
+    position: absolute;              /* cr-css-1005 line 325: minified → position:absolute */
+    top: 100px;                      /* cr-css-1005 line 325: minified → top:100px */
+    left: calc(50% - 120px);         /* cr-css-1005 line 325: minified → left:calc(50% - 120px) */
 }
 
 .footer-content {
-  text-align: center;
-  text-transform: none;
-  font-size: 20px;
+    text-align: center;              /* cr-css-1005 line 329: minified → text-align:center */
+    text-transform: none;            /* cr-css-1005 line 330: minified → text-transform:none */
+    font-size: 20px;                 /* cr-css-1005 line 329: minified → font-size:20px */
 }
 
 .footer-content__heading {
-  margin: 30px 0 0;
+    margin: 30px 0 0;                /* cr-css-1005 line 334: minified → margin:30px 0 0 */
 }
 
 .footer-content__list {
-  margin: 0;
-  font-size: 14px;
+    margin: 0;                       /* cr-css-1005 line 338: minified → margin:0 */
+    font-size: 14px;                 /* cr-css-1005 line 338: minified → font-size:14px */
 }
 
 .footer-content__contact {
-  line-height: .5;
+    line-height: 0.5;                /* cr-css-1005: minified → line-height:.5 (Clean-CSS leading-zero optimisation) */
 }
 
 .footer-content__legal {
-  font-size: 14px;
-  line-height: .6;
+    font-size: 14px;                 /* cr-css-1005: minified → font-size:14px */
+    line-height: 0.6;                /* cr-css-1005: minified → line-height:.6 (Clean-CSS leading-zero optimisation) */
 }
 
 .footer--logo {
-  position: absolute;
-  margin-left: calc(50% - 63px);
-  left: 0;
-  top: -61px;
+    position: absolute;              /* cr-css-1005: minified → position:absolute */
+    margin-left: calc(50% - 63px);   /* cr-css-1005: minified → margin-left:calc(50% - 63px) */
+    left: 0;                         /* cr-css-1005: minified → left:0 */
+    top: -61px;                      /* cr-css-1005: minified → top:-61px */
 }

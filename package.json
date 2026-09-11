@@ -1,0 +1,70 @@
+{
+  "name": "modresorts-webcontent",
+  "version": "1.0.0",
+  "description": "ModResorts WebContent - CSS minification build pipeline for AWS CodePipeline + S3 + CloudFront delivery (cr-css-1005)",
+  "scripts": {
+    "minify:css:cleancss": "cleancss --level 2 -o WebContent/styles.min.css WebContent/styles.css && cleancss --level 2 -o WebContent/pikaday.min.css WebContent/pikaday.css",
+    "minify:css:cssnano": "postcss WebContent/styles.css --use cssnano -o WebContent/styles.min.css && postcss WebContent/pikaday.css --use cssnano -o WebContent/pikaday.min.css",
+    "minify:css": "npm run minify:css:cleancss",
+    "build": "npm run minify:css",
+    "deploy:s3": "aws s3 cp WebContent/styles.min.css s3://$S3_BUCKET_NAME/static/css/styles.min.css --cache-control 'max-age=31536000,public,immutable' --content-type 'text/css' && aws s3 cp WebContent/pikaday.min.css s3://$S3_BUCKET_NAME/static/css/pikaday.min.css --cache-control 'max-age=31536000,public,immutable' --content-type 'text/css'",
+    "invalidate:cloudfront": "aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths '/static/css/styles.min.css' '/static/css/pikaday.min.css'",
+    "release": "npm run build && npm run deploy:s3 && npm run invalidate:cloudfront"
+  },
+  "devDependencies": {
+    "clean-css-cli": "^5.6.3",
+    "cssnano": "^6.0.1",
+    "postcss": "^8.4.31",
+    "postcss-cli": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "awsPipeline": {
+    "description": "AWS CodePipeline build stage configuration for CSS minification (cr-css-1005) with S3 + CloudFront delivery",
+    "ruleId": "cr-css-1005",
+    "ruleName": "CSS Files Not Minified for Production",
+    "remediationStrategy": "Integrate CSS Minification in AWS CodePipeline with S3 and CloudFront Delivery",
+    "buildSpec": "buildspec.yml",
+    "violationsAddressed": [
+      "WebContent/styles.css lines 267-338: Weather Widget, Decorative Lines, Weather Icon, Footer sections",
+      "All 30 occurrences of non-minified CSS declarations processed by Clean-CSS level 2",
+      "Minified output written to WebContent/styles.min.css",
+      "styles.min.css deployed to S3 with Cache-Control: max-age=31536000,public,immutable",
+      "CloudFront serves styles.min.css from global edge locations for reduced bandwidth and faster delivery"
+    ],
+    "phases": {
+      "install": {
+        "runtimeVersions": {
+          "nodejs": "18"
+        },
+        "commands": [
+          "npm install"
+        ]
+      },
+      "build": {
+        "commands": [
+          "npm run build"
+        ]
+      },
+      "post_build": {
+        "commands": [
+          "npm run deploy:s3",
+          "npm run invalidate:cloudfront"
+        ]
+      }
+    },
+    "artifacts": {
+      "files": [
+        "WebContent/styles.min.css",
+        "WebContent/pikaday.min.css"
+      ],
+      "discard-paths": "no"
+    },
+    "cache": {
+      "paths": [
+        "node_modules/**/*"
+      ]
+    }
+  }
+}

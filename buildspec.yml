@@ -1,0 +1,102 @@
+version: 0.2
+
+# AWS CodePipeline BuildSpec for CSS Minification
+# Rule: cr-css-1005 - CSS Files Not Minified for Production
+# Integrates CSSNano/Clean-CSS minification into the build stage.
+# Minified CSS artifacts are deployed to S3 and served via CloudFront
+# for reduced bandwidth and faster CDN delivery across global regions.
+
+env:
+  variables:
+    NODE_VERSION: "18"
+  parameter-store:
+    S3_BUCKET_NAME: "/modresorts/s3/static-bucket-name"
+    CLOUDFRONT_DISTRIBUTION_ID: "/modresorts/cloudfront/distribution-id"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing CSS minification dependencies (Clean-CSS + CSSNano)..."
+      - npm install
+
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on $(date)"
+      - echo "Validating environment variables..."
+      - test -n "$S3_BUCKET_NAME" || (echo "ERROR: S3_BUCKET_NAME is not set" && exit 1)
+      - test -n "$CLOUDFRONT_DISTRIBUTION_ID" || (echo "ERROR: CLOUDFRONT_DISTRIBUTION_ID is not set" && exit 1)
+      - echo "Source CSS files:"
+      - ls -lh WebContent/*.css
+
+  build:
+    commands:
+      - echo "Build phase started on $(date)"
+      - echo "Minifying CSS files using Clean-CSS (level 2 optimizations)..."
+
+      # Minify pikaday.css -> pikaday.min.css using Clean-CSS
+      - npx cleancss
+          --level 2
+          --output WebContent/pikaday.min.css
+          WebContent/pikaday.css
+      - echo "pikaday.css minified successfully"
+
+      # Minify styles.css -> styles.min.css using Clean-CSS
+      - npx cleancss
+          --level 2
+          --output WebContent/styles.min.css
+          WebContent/styles.css
+      - echo "styles.css minified successfully"
+
+      # Report size savings for CloudFront bandwidth optimization
+      - echo "=== CSS Minification Size Report ==="
+      - |
+        for src in WebContent/pikaday.css WebContent/styles.css; do
+          min="${src%.css}.min.css"
+          orig=$(wc -c < "$src")
+          minified=$(wc -c < "$min")
+          savings=$(( orig - minified ))
+          pct=$(( savings * 100 / orig ))
+          echo "  $src: ${orig} bytes -> ${minified} bytes (saved ${savings} bytes / ${pct}%)"
+        done
+
+  post_build:
+    commands:
+      - echo "Post-build phase started on $(date)"
+
+      # Upload minified CSS to S3 with long-lived cache headers for CloudFront CDN
+      - echo "Uploading minified CSS artifacts to S3 bucket: $S3_BUCKET_NAME"
+      - aws s3 cp WebContent/pikaday.min.css
+          "s3://$S3_BUCKET_NAME/static/css/pikaday.min.css"
+          --cache-control "max-age=31536000,public,immutable"
+          --content-type "text/css"
+          --metadata-directive REPLACE
+      - echo "pikaday.min.css uploaded to S3"
+
+      - aws s3 cp WebContent/styles.min.css
+          "s3://$S3_BUCKET_NAME/static/css/styles.min.css"
+          --cache-control "max-age=31536000,public,immutable"
+          --content-type "text/css"
+          --metadata-directive REPLACE
+      - echo "styles.min.css uploaded to S3"
+
+      # Invalidate CloudFront cache so updated minified CSS is served immediately
+      - echo "Invalidating CloudFront distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+      - aws cloudfront create-invalidation
+          --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID"
+          --paths "/static/css/pikaday.min.css" "/static/css/styles.min.css"
+
+      - echo "CSS minification and CDN deployment completed successfully on $(date)"
+
+artifacts:
+  files:
+    - WebContent/pikaday.min.css
+    - WebContent/styles.min.css
+    - WebContent/**/*
+  discard-paths: no
+  base-directory: "."
+
+cache:
+  paths:
+    - node_modules/**/*

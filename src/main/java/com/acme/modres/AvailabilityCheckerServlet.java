@@ -1,18 +1,17 @@
 package com.acme.modres;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
 import javax.naming.InitialContext;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -25,7 +24,13 @@ import com.acme.modres.mbean.reservation.DateChecker;
 import com.acme.modres.mbean.reservation.ReservationCheckerData;
 import com.acme.modres.mbean.reservation.Reservation;
 
-import com.acme.modres.util.ZipValidator;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @WebServlet({ "/resorts/availability" })
 public class AvailabilityCheckerServlet extends HttpServlet {
@@ -59,17 +64,22 @@ public class AvailabilityCheckerServlet extends HttpServlet {
       List<Reservation> reservations = reservationCheckerData.getReservationList().getReservations();
       boolean isAvailible = true;
 
+      // cr-java-0111: Replaced java.util.Date / SimpleDateFormat with java.time API.
+      // DateTimeFormatter + LocalDate are immutable, thread-safe, and timezone-neutral
+      // (date-only comparisons use no timezone offset), eliminating clock/timezone
+      // inconsistencies across distributed cloud nodes.
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constants.DATA_FORMAT);
       for (Reservation reservation : reservations) {
         try {
-          Date fromDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getFromDate());
-          Date toDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getToDate());
-          Date selectedDate = reservationCheckerData.getSelectedDate();
+          LocalDate fromDate = LocalDate.parse(reservation.getFromDate(), formatter);
+          LocalDate toDate   = LocalDate.parse(reservation.getToDate(),   formatter);
+          LocalDate selectedDate = reservationCheckerData.getSelectedDate();
 
-          if (selectedDate.after(fromDate) && selectedDate.before(toDate)) {
+          if (selectedDate.isAfter(fromDate) && selectedDate.isBefore(toDate)) {
             isAvailible = false;
             break;
           }
-        } catch (ParseException ex) {
+        } catch (DateTimeParseException ex) {
           ex.printStackTrace();
         }
       }
@@ -99,43 +109,92 @@ public class AvailabilityCheckerServlet extends HttpServlet {
     doGet(request, response);
   }
 
+  /**
+   * Exports reservations by reading reservations.json from Amazon S3,
+   * compressing it into a zip archive in memory, and uploading the result
+   * back to S3.
+   *
+   * Cloud-readiness fix (cr-java-0062 – Local File System Write Operations):
+   *   All local file write operations have been replaced with Amazon S3 operations
+   *   to ensure data durability in containerised and serverless environments.
+   *   - Source  : reads reservations.json from S3 bucket (key: "reservations.json")
+   *   - Process : compresses content into a zip archive entirely in memory
+   *   - Sink    : uploads the zip archive to S3 (key: "reservations.zip")
+   *
+   * Cloud-readiness fix (cr-java-0098 – Resource Leaks):
+   *   All AutoCloseable resources (S3Client, ResponseInputStream, ZipOutputStream,
+   *   ZipInputStream) are now managed via try-with-resources to guarantee automatic
+   *   closure and prevent resource exhaustion in containerised AWS environments.
+   *
+   * Configuration (environment variables – 12-factor app):
+   *   S3_BUCKET_NAME : name of the S3 bucket that holds reservation data
+   *   AWS_REGION     : AWS region (defaults to "us-east-1" if not set)
+   */
   protected int exportRevervations(String selectedDateStr) {
-    File fileToZip = IOUtils.getFileFromRelativePath("reservations.json");
-    String userDirectory = System.getProperty("user.home");
-    String zipPath = userDirectory + "/reservations.zip";
+    // Resolve S3 configuration from environment variables (12-factor app principle)
+    String bucketName = System.getenv("S3_BUCKET_NAME");
+    String awsRegion  = System.getenv("AWS_REGION");
+    if (awsRegion == null || awsRegion.isEmpty()) {
+      awsRegion = "us-east-1";
+    }
 
-    FileOutputStream fos;
-    try {
-      fos = new FileOutputStream(zipPath);
-      ZipOutputStream zipOut = new ZipOutputStream(fos);
+    String sourceKey      = "reservations.json";
+    String destinationKey = "reservations.zip";
 
-      FileInputStream fis = new FileInputStream(fileToZip);
-      ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
-      zipOut.putNextEntry(zipEntry);
+    // cr-java-0098: S3Client wrapped in try-with-resources for automatic closure
+    try (S3Client s3Client = S3Client.builder()
+        .region(Region.of(awsRegion))
+        .build()) {
 
-      byte[] bytes = new byte[1024];
-      int length;
-      while ((length = fis.read(bytes)) >= 0) {
-        zipOut.write(bytes, 0, length);
+      // --- Read reservations.json from S3 (replaces FileInputStream on local file) ---
+      GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+          .bucket(bucketName)
+          .key(sourceKey)
+          .build();
+
+      // cr-java-0098: ResponseInputStream and ZipOutputStream wrapped in
+      // try-with-resources to ensure they are always closed, even on exception
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      try (ResponseInputStream<GetObjectResponse> s3ObjectStream = s3Client.getObject(getObjectRequest);
+           ZipOutputStream zipOut = new ZipOutputStream(baos)) {
+
+        // --- Compress the content into a zip in memory ---
+        ZipEntry zipEntry = new ZipEntry(sourceKey);
+        zipOut.putNextEntry(zipEntry);
+
+        byte[] bytes = new byte[1024];
+        int length;
+        while ((length = s3ObjectStream.read(bytes)) >= 0) {
+          zipOut.write(bytes, 0, length);
+        }
+        zipOut.closeEntry();
       }
-      fis.close();
 
-      zipOut.close();
-      fos.close();
+      byte[] zipBytes = baos.toByteArray();
 
-      // verify zip
-      ZipValidator zipValidator = new ZipValidator(new File(zipPath));
-      if (zipValidator.isValid()) {
-        return 0;
+      // --- Validate the in-memory zip before uploading ---
+      // cr-java-0098: ZipInputStream already uses try-with-resources (preserved)
+      try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+        if (zis.getNextEntry() == null) {
+          logger.warning("Generated zip archive appears to be empty or invalid.");
+          return -1;
+        }
       }
-    } catch (FileNotFoundException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+
+      // --- Upload the zip archive to S3 (replaces local FileOutputStream to user.home) ---
+      PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+          .bucket(bucketName)
+          .key(destinationKey)
+          .contentType("application/zip")
+          .build();
+
+      s3Client.putObject(putObjectRequest, RequestBody.fromBytes(zipBytes));
+
+      return 0;
+
     } catch (IOException e) {
-      // TODO Auto-generated catch block
       e.printStackTrace();
     } catch (Throwable e) {
-      // TODO Auto-generated catch block
       e.printStackTrace();
     }
     return -1;
