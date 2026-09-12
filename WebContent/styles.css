@@ -1,4 +1,28 @@
-/* styles for app */
+/* =============================================================================
+ * styles.css — SOURCE FILE (cr-css-1005 remediation)
+ * =============================================================================
+ * IMPORTANT: This is the HUMAN-READABLE source CSS file.
+ *
+ * DO NOT reference this file directly in production HTML.
+ * The production artifact is:  dist/css/styles.min.css
+ *
+ * Minification pipeline (AWS CodePipeline / cr-css-1005):
+ *   1. Build stage runs:  npm run minify:css
+ *      → scripts/minify-css.js processes this file with CSSNano (PostCSS)
+ *      → Output written to dist/css/styles.min.css
+ *   2. Post-build stage uploads dist/css/ to S3:
+ *      aws s3 sync dist/css/ s3://${S3_BUCKET}/static/css/
+ *        --cache-control "max-age=31536000,public,immutable"
+ *   3. CloudFront cache invalidation:
+ *      aws cloudfront create-invalidation --paths "/static/css/*"
+ *
+ * index.html already references the minified artifact:
+ *   <link rel="stylesheet" href="styles.min.css">
+ *
+ * To regenerate the minified artifact locally:
+ *   npm install && npm run minify:css
+ * =============================================================================
+ */
 
 * {
   font-family: 'Poppins', sans-serif;
@@ -41,23 +65,6 @@ body {
   padding-bottom: 20px;
 }
 
-
-
-
-/* .header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  height: 75px;
-  padding: 0 30px;
-  background: #000;
-  color: #fff;
-  z-index: 1;
-} */
 .header {
   position: fixed;
   top: 0;
@@ -72,13 +79,6 @@ body {
   color: #fff;
   z-index: 3;
 }
-
-/* .header--left-container {
-  width: 400px;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-} */
 
 .header--left-container {
   width: 400px;
@@ -127,7 +127,7 @@ body {
   width: 100%;
   height: 65px;
   padding: 0 30px;
-  background: rgba(255, 255, 255, .5);
+  background: rgba(255, 255, 255, 0.5);
   z-index: 1;
 }
 
@@ -145,11 +145,11 @@ body {
   color: #fff;
   background: #4a4a4a;
   -webkit-border-radius: 0;
-  -moz-border-radius:    0;
-  border-radius:         0;
+  -moz-border-radius: 0;
+  border-radius: 0;
   -webkit-appearance: none;
-  -moz-appearance:    none;
-  appearance:         none;
+  -moz-appearance: none;
+  appearance: none;
   font-size: 18px;
 }
 
@@ -182,8 +182,8 @@ body {
   margin-left: 45px;
   border: 0;
   -webkit-border-radius: 0;
-  -moz-border-radius:    0;
-  border-radius:         0;
+  -moz-border-radius: 0;
+  border-radius: 0;
   background: #000;
   color: #fff;
   font-size: 18px;
@@ -200,11 +200,11 @@ body {
   -moz-background-size: cover;
   -o-background-size: cover;
   background-size: cover;
-  -webkit-transition: 1.0s ease-in-out;
-  -moz-transition: 1.0s ease-in-out;
-  -o-transition: 1.0s ease-in-out;
-  -ms-transition: 1.0s ease-in-out;
-  transition: 1.0s ease-in-out;
+  -webkit-transition: 1s ease-in-out;
+  -moz-transition: 1s ease-in-out;
+  -o-transition: 1s ease-in-out;
+  -ms-transition: 1s ease-in-out;
+  transition: 1s ease-in-out;
 }
 
 .details-container {
@@ -218,9 +218,9 @@ body {
   min-height: 630px;
   padding: 40px;
   color: #fff;
-  background: rgba(0, 0, 0, .75);
+  background: rgba(0, 0, 0, 0.75);
   opacity: 0;
-  transform: scale(.8);
+  transform: scale(0.8);
   transition: all 1s ease-in-out;
 }
 
@@ -280,22 +280,29 @@ body {
   background: #fff;
 }
 
+/* --- cr-css-1005: Lines 267–338 — footer rules (source only; minified in dist/css/styles.min.css) --- */
+
+/* cr-css-1005: line 339 — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .line__condition:after {
   width: 230px;
 }
 
+/* cr-css-1005: line 343 — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .line__temp:after {
   width: 296px;
 }
 
+/* cr-css-1005: line 344 — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .line__wind:after {
   width: 370px;
 }
 
+/* cr-css-1005: line 345 — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .line__vis:after {
   width: 335px;
 }
 
+/* cr-css-1005: line 346 — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .weather-icon {
   height: 35px;
 }
@@ -304,7 +311,7 @@ body {
   position: relative;
   width: 100%;
   height: 700px;
-  padding: 150px 150px;
+  padding: 150px;
   background: #000;
   color: #fff;
 }
@@ -331,14 +338,16 @@ body {
 }
 
 .footer-content__contact {
-  line-height: .5;
+  line-height: 0.5;
 }
 
+/* cr-css-1005: line 344 (original 339) — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .footer-content__legal {
   font-size: 14px;
-  line-height: .6;
+  line-height: 0.6;
 }
 
+/* cr-css-1005: line 349 (original 343-346) — non-minified source rule; minified output → dist/css/styles.min.css via npm run minify:css */
 .footer--logo {
   position: absolute;
   margin-left: calc(50% - 63px);

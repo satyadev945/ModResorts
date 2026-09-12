@@ -1,18 +1,15 @@
 package com.acme.modres;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
 import javax.naming.InitialContext;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -25,7 +22,13 @@ import com.acme.modres.mbean.reservation.DateChecker;
 import com.acme.modres.mbean.reservation.ReservationCheckerData;
 import com.acme.modres.mbean.reservation.Reservation;
 
-import com.acme.modres.util.ZipValidator;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @WebServlet({ "/resorts/availability" })
 public class AvailabilityCheckerServlet extends HttpServlet {
@@ -59,17 +62,18 @@ public class AvailabilityCheckerServlet extends HttpServlet {
       List<Reservation> reservations = reservationCheckerData.getReservationList().getReservations();
       boolean isAvailible = true;
 
+      DateTimeFormatter formatter = DateTimeFormatter.ofPattern(Constants.DATA_FORMAT);
       for (Reservation reservation : reservations) {
         try {
-          Date fromDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getFromDate());
-          Date toDate = new SimpleDateFormat(Constants.DATA_FORMAT).parse(reservation.getToDate());
-          Date selectedDate = reservationCheckerData.getSelectedDate();
+          LocalDate fromDate = LocalDate.parse(reservation.getFromDate(), formatter);
+          LocalDate toDate = LocalDate.parse(reservation.getToDate(), formatter);
+          LocalDate selectedDate = reservationCheckerData.getSelectedDate();
 
-          if (selectedDate.after(fromDate) && selectedDate.before(toDate)) {
+          if (selectedDate.isAfter(fromDate) && selectedDate.isBefore(toDate)) {
             isAvailible = false;
             break;
           }
-        } catch (ParseException ex) {
+        } catch (DateTimeParseException ex) {
           ex.printStackTrace();
         }
       }
@@ -99,43 +103,76 @@ public class AvailabilityCheckerServlet extends HttpServlet {
     doGet(request, response);
   }
 
+  /**
+   * Exports reservations by reading reservations.json from Amazon S3,
+   * compressing it into a ZIP archive in memory, and uploading the result
+   * back to Amazon S3. The S3 bucket name and object keys are resolved from
+   * environment variables (S3_BUCKET_NAME, S3_RESERVATIONS_KEY,
+   * S3_RESERVATIONS_ZIP_KEY) so that no absolute file-system paths are
+   * required at runtime.
+   *
+   * @param selectedDateStr the selected date string (reserved for future use)
+   * @return 0 on success, -1 on failure
+   */
   protected int exportRevervations(String selectedDateStr) {
-    File fileToZip = IOUtils.getFileFromRelativePath("reservations.json");
-    String userDirectory = System.getProperty("user.home");
-    String zipPath = userDirectory + "/reservations.zip";
+    // Resolve S3 configuration from environment variables – no hard-coded paths
+    String bucketName   = System.getenv("S3_BUCKET_NAME");
+    String sourceKey    = System.getenv().getOrDefault("S3_RESERVATIONS_KEY",     "reservations.json");
+    String destKey      = System.getenv().getOrDefault("S3_RESERVATIONS_ZIP_KEY", "reservations.zip");
 
-    FileOutputStream fos;
-    try {
-      fos = new FileOutputStream(zipPath);
-      ZipOutputStream zipOut = new ZipOutputStream(fos);
+    try (S3Client s3 = S3Client.create()) {
 
-      FileInputStream fis = new FileInputStream(fileToZip);
-      ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
-      zipOut.putNextEntry(zipEntry);
+      // --- Read reservations.json from S3 ---
+      GetObjectRequest getRequest = GetObjectRequest.builder()
+          .bucket(bucketName)
+          .key(sourceKey)
+          .build();
 
-      byte[] bytes = new byte[1024];
-      int length;
-      while ((length = fis.read(bytes)) >= 0) {
-        zipOut.write(bytes, 0, length);
+      ResponseBytes<GetObjectResponse> s3Object = s3.getObjectAsBytes(getRequest);
+      byte[] sourceBytes = s3Object.asByteArray();
+
+      // --- Build ZIP archive in memory ---
+      // Use try-with-resources for ZipOutputStream to ensure it is always closed
+      // and all ZIP data is flushed before reading the underlying byte array.
+      try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+           ZipOutputStream zipOut = new ZipOutputStream(baos)) {
+        ZipEntry zipEntry = new ZipEntry(sourceKey);
+        zipOut.putNextEntry(zipEntry);
+
+        byte[] buffer = new byte[1024];
+        int offset = 0;
+        while (offset < sourceBytes.length) {
+          int length = Math.min(buffer.length, sourceBytes.length - offset);
+          zipOut.write(sourceBytes, offset, length);
+          offset += length;
+        }
+        zipOut.closeEntry();
+
+        // Finish the ZIP stream before reading bytes
+        zipOut.finish();
+        byte[] zipBytes = baos.toByteArray();
+
+        // --- Upload ZIP archive to S3 ---
+        PutObjectRequest putRequest = PutObjectRequest.builder()
+            .bucket(bucketName)
+            .key(destKey)
+            .contentType("application/zip")
+            .contentLength((long) zipBytes.length)
+            .build();
+
+        s3.putObject(putRequest, RequestBody.fromBytes(zipBytes));
       }
-      fis.close();
 
-      zipOut.close();
-      fos.close();
+      return 0;
 
-      // verify zip
-      ZipValidator zipValidator = new ZipValidator(new File(zipPath));
-      if (zipValidator.isValid()) {
-        return 0;
-      }
-    } catch (FileNotFoundException e) {
-      // TODO Auto-generated catch block
+    } catch (S3Exception e) {
+      logger.severe("S3 error during exportRevervations: " + e.awsErrorDetails().errorMessage());
       e.printStackTrace();
     } catch (IOException e) {
-      // TODO Auto-generated catch block
+      logger.severe("IO error during exportRevervations: " + e.getMessage());
       e.printStackTrace();
     } catch (Throwable e) {
-      // TODO Auto-generated catch block
+      logger.severe("Unexpected error during exportRevervations: " + e.getMessage());
       e.printStackTrace();
     }
     return -1;

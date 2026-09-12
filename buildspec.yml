@@ -1,0 +1,66 @@
+version: 0.2
+
+# AWS CodeBuild buildspec for CSS minification and S3/CloudFront delivery
+# Remediation: cr-css-1005 - CSS Files Not Minified for Production
+# Integrates CSS minification into AWS CodePipeline build stage using CSSNano (PostCSS)
+# Minified artifacts are deployed to S3 and served via CloudFront for reduced
+# bandwidth and faster CDN delivery across global regions.
+
+env:
+  variables:
+    S3_BUCKET: "${S3_BUCKET_NAME}"
+    CLOUDFRONT_DISTRIBUTION_ID: "${CLOUDFRONT_DISTRIBUTION_ID}"
+    CSS_SOURCE_DIR: "WebContent"
+    CSS_OUTPUT_DIR: "dist/css"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing CSS minification tools (CSSNano / PostCSS)..."
+      - npm install
+      - npm install -g postcss-cli clean-css-cli
+
+  pre_build:
+    commands:
+      - echo "Preparing output directories..."
+      - mkdir -p $CSS_OUTPUT_DIR
+      - echo "CSS source files to be minified:"
+      - find $CSS_SOURCE_DIR -name "*.css" -not -name "*.min.css"
+
+  build:
+    commands:
+      - echo "=== Step 1: Minify CSS files using CSSNano (PostCSS) ==="
+      - node scripts/minify-css.js
+      - echo "=== Step 2: Verify minified output ==="
+      - |
+        for min_file in $(find $CSS_OUTPUT_DIR -name "*.min.css"); do
+          echo "Minified: $min_file ($(wc -c < $min_file) bytes)"
+        done
+      - echo "CSS minification complete."
+
+  post_build:
+    commands:
+      - echo "=== Step 3: Upload minified CSS artifacts to S3 ==="
+      - |
+        aws s3 sync $CSS_OUTPUT_DIR s3://$S3_BUCKET/static/css/ \
+          --cache-control "max-age=31536000,public,immutable" \
+          --content-type "text/css" \
+          --delete
+      - echo "=== Step 4: Invalidate CloudFront cache for CSS paths ==="
+      - |
+        aws cloudfront create-invalidation \
+          --distribution-id $CLOUDFRONT_DISTRIBUTION_ID \
+          --paths "/static/css/*"
+      - echo "Deployment complete. Minified CSS is live on CloudFront."
+
+artifacts:
+  files:
+    - "dist/css/**/*.min.css"
+    - "WebContent/**"
+  discard-paths: no
+
+cache:
+  paths:
+    - node_modules/**/*

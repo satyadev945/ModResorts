@@ -1,0 +1,25 @@
+{
+  "name": "modresorts-css-build",
+  "version": "1.0.0",
+  "description": "CSS minification tooling for ModResorts — AWS CodePipeline / CloudFront delivery (cr-css-1005)",
+  "private": true,
+  "scripts": {
+    "build": "npm run minify:css",
+    "minify:css": "node scripts/minify-css.js",
+    "minify:css:watch": "chokidar 'WebContent/**/*.css' --ignore '**/*.min.css' -c 'npm run minify:css'",
+    "minify:css:postcss": "postcss WebContent/styles.css --use cssnano --no-map -o dist/css/styles.min.css",
+    "minify:css:cleancss": "cleancss -o dist/css/styles.min.css WebContent/styles.css",
+    "prebuild": "mkdir -p dist/css"
+  },
+  "devDependencies": {
+    "postcss": "^8.4.38",
+    "postcss-cli": "^11.0.0",
+    "cssnano": "^6.1.2",
+    "clean-css-cli": "^5.6.3",
+    "chokidar-cli": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

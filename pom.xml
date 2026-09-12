@@ -5,7 +5,7 @@
   <groupId>com.acme.modres</groupId>
   <artifactId>modresorts</artifactId>
   <version>2.0.0</version>
-  <packaging>war</packaging>
+  <packaging>jar</packaging>
   <name>ModResorts</name>
   <properties>
     <maven.compiler.target>1.8</maven.compiler.target>
@@ -16,10 +16,16 @@
   </properties>
   <dependencies>
     <dependency>
-      <groupId>javax</groupId>
-      <artifactId>javaee-api</artifactId>
-      <version>7.0</version>
-      <scope>provided</scope>
+      <!-- Spring Boot Web starter replaces EJB container-managed components -->
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+      <version>2.7.18</version>
+    </dependency>
+    <dependency>
+      <!-- Spring Boot Data JPA starter with HikariCP for AWS RDS connectivity -->
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+      <version>2.7.18</version>
     </dependency>
     <dependency>
       <groupId>com.ibm.websphere.appserver</groupId>
@@ -85,23 +91,43 @@
       <version>2.9.10</version>
     </dependency>
 
+    <!-- AWS SDK v2 – S3 client (replaces hard-coded file-system paths) -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+
+    <!-- AWS SDK v2 – Secrets Manager (replaces hardcoded secrets / API keys) -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>secretsmanager</artifactId>
+      <version>2.25.11</version>
+    </dependency>
+
   </dependencies>
   <build>
     <plugins>
+      <!-- Spring Boot Maven Plugin: produces a self-contained executable JAR
+           with embedded Tomcat, replacing the maven-war-plugin.
+           This enables direct container deployment on Amazon ECS/EKS/Fargate
+           without an external application server. -->
       <plugin>
-        <artifactId>maven-war-plugin</artifactId>
-        <version>3.1.0</version>
-        <configuration>
-          <failOnMissingWebXml>false</failOnMissingWebXml>
-          <packagingExcludes>pom.xml, src/, target/, WebContent/</packagingExcludes>
-          <warSourceDirectory>WebContent</warSourceDirectory>
-          <webResources>
-            <resource>
-              <directory>src/main/resources</directory>
-              <targetPath>WEB-INF/classes</targetPath>
-            </resource>
-          </webResources>
-        </configuration>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>2.7.18</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <artifactId>maven-resources-plugin</artifactId>
