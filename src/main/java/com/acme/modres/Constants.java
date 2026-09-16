@@ -22,6 +22,7 @@ public class Constants {
   public final static String WUNDERGROUND_API_PREFIX = "http://api.wunderground.com/api/";
   public final static String WUNDERGROUND_API_PART = "/forecast/geolookup/conditions/q/";
 
-  public final static String DATA_FORMAT = "MM/dd/yyyy";
+  // ISO 8601 date format for PostgreSQL compatibility
+  public final static String DATA_FORMAT = "yyyy-MM-dd";
 
 }

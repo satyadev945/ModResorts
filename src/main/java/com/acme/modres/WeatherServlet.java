@@ -172,7 +172,7 @@ public class WeatherServlet extends HttpServlet {
       try {
         in = new BufferedReader(new InputStreamReader(con.getInputStream()));
         String inputLine = null;
-        StringBuffer responseStr = new StringBuffer();
+        StringBuilder responseStr = new StringBuilder();
 
         while ((inputLine = in.readLine()) != null) {
           responseStr.append(inputLine);
@@ -249,22 +249,12 @@ public class WeatherServlet extends HttpServlet {
     return "*********" + lastToKeep;
   }
 
-  private String configureEnvDiscovery() {
-
-    String serverEnv = "";
-
-    serverEnv += com.ibm.websphere.runtime.ServerName.getDisplayName();
-    serverEnv += com.ibm.websphere.runtime.ServerName.getFullName();
-
-    return serverEnv;
-  }
-
   private InitialContext setInitialContextProps() {
 
-    Hashtable ht = new Hashtable();
+    Hashtable<String, String> ht = new Hashtable<>();
 
-    ht.put("java.naming.factory.initial", "com.ibm.websphere.naming.WsnInitialContextFactory");
-    ht.put("java.naming.provider.url", "corbaloc:iiop:localhost:2809");
+    ht.put("java.naming.factory.initial", "com.sun.jndi.rmi.registry.RegistryContextFactory");
+    ht.put("java.naming.provider.url", "rmi://localhost:1099");
 
     InitialContext ctx = null;
     try {

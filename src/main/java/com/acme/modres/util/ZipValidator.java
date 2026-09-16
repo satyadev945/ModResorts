@@ -9,21 +9,27 @@ import java.util.zip.ZipFile;
 
 public class ZipValidator extends ZipFile {
 
+  private File file;
+
   public ZipValidator(File file) throws ZipException, IOException {
     super(file);
     this.file = file;
   }
 
-  private File file;
-
   public boolean isValid() throws Throwable {
     if (file.exists()) {
-      ZipValidator zipFile = new ZipValidator(file);
-      Enumeration<? extends ZipEntry> entries = zipFile.entries();
-      if (!entries.hasMoreElements()) {
-        return true;
+      ZipValidator zipFile = null;
+      try {
+        zipFile = new ZipValidator(file);
+        Enumeration<? extends ZipEntry> entries = zipFile.entries();
+        if (!entries.hasMoreElements()) {
+          return true;
+        }
+      } finally {
+        if (zipFile != null) {
+          zipFile.close();
+        }
       }
-      zipFile.close();
     }
     return false;
   }

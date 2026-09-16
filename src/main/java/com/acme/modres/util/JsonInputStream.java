@@ -1,11 +1,11 @@
 package com.acme.modres.util;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.BufferedReader;
 
 import com.google.gson.Gson;
 
@@ -35,15 +35,14 @@ public class JsonInputStream extends FileInputStream {
         if (is != null) {
           try {
             is.close();
-            is.read(); // test if file is closed
           } catch (IOException e) {
             // closed successfully
-            return jsonObject;
           } catch (Throwable e) {
             e.printStackTrace();
           }
         }
       }
+      return jsonObject;
     }
     return null;
   }
