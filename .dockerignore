@@ -1,0 +1,65 @@
+# Files and directories to exclude from the Docker build context
+# ---------------------------------------------------------------
+
+# Maven build output
+target/
+
+# Maven wrapper (NEVER used in Docker builds – use system mvn)
+mvnw
+mvnw.cmd
+.mvn/
+
+# Gradle wrapper (not used in this project, but excluded for safety)
+gradlew
+gradlew.bat
+gradle/wrapper/
+gradle/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# IDE / editor artefacts
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+docs/
+
+# CI / CD configuration (not needed inside the image)
+cloudbuild.yaml
+Jenkinsfile
+.travis.yml
+.github/
+
+# Node / npm (CSS tooling – not needed at runtime)
+node_modules/
+npm-debug.log
+package-lock.json
+
+# Test reports
+surefire-reports/
+failsafe-reports/
+
+# Kubernetes manifests (not needed inside the image)
+kubernetes/
+
+# Scripts (not needed inside the image)
+scripts/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp

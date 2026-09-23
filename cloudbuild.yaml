@@ -1,0 +1,168 @@
+# =============================================================================
+# Google Cloud Build Pipeline
+# Remediation for: cz-css-1005 (Unused CSS in Container Images)
+#
+# Violation: styles.css Line 13 — CSS file contains rules for removed/unused
+# components that bloat the container image, increasing size and deployment time.
+#
+# Strategy: Cloud Build with PurgeCSS and Artifact Registry for GKE Autopilot.
+#
+# Pipeline stages:
+#   Step 1  — Install Node.js dependencies (PurgeCSS + PostCSS/cssnano)
+#   Step 2  — Run PurgeCSS to strip unused CSS rules from styles.css (line 13)
+#   Step 3  — Run cssnano to minify the purged CSS output
+#   Step 4  — Build the multi-stage Docker image (includes purged + minified CSS)
+#   Step 5  — Push the optimized image to Artifact Registry
+#   Step 6  — Deploy to GKE Autopilot cluster
+#
+# The combination of PurgeCSS (removes unused rules) and cssnano (minifies
+# remaining rules) produces the smallest possible CSS payload for the
+# production container image, reducing registry storage costs and speeding
+# up Kubernetes pod scheduling on GKE Autopilot.
+# =============================================================================
+
+steps:
+  # ---------------------------------------------------------------------------
+  # Step 1: Install Node.js CSS optimization dependencies
+  # Installs PurgeCSS and PostCSS/cssnano from package.json devDependencies.
+  # Uses a pinned node:20-alpine image for reproducible builds.
+  # ---------------------------------------------------------------------------
+  - name: "node:20-alpine"
+    id: "install-css-deps"
+    entrypoint: "npm"
+    args: ["install", "--save-dev"]
+    dir: "."
+
+  # ---------------------------------------------------------------------------
+  # Step 2: Run PurgeCSS — remove unused CSS rules (cz-css-1005 fix)
+  #
+  # Scans WebContent/**/*.html, *.jsp, *.js and src/**/*.java to identify
+  # which CSS selectors are actually used, then removes all unused rules from
+  # styles.css (line 13 violation) and pikaday.css.
+  #
+  # Output: dist/styles.css and dist/pikaday.css (unused rules removed)
+  # ---------------------------------------------------------------------------
+  - name: "node:20-alpine"
+    id: "purge-unused-css"
+    entrypoint: "npx"
+    args:
+      - "purgecss"
+      - "--config"
+      - "purgecss.config.js"
+    dir: "."
+    waitFor:
+      - "install-css-deps"
+
+  # ---------------------------------------------------------------------------
+  # Step 3: Run cssnano — minify the purged CSS output (cz-css-1004 fix)
+  #
+  # Applies PostCSS/cssnano minification to the PurgeCSS output files in dist/.
+  # Removes whitespace, comments, and redundant values from the already-purged
+  # CSS, producing the smallest possible production CSS files.
+  #
+  # Output: dist/styles.min.css and dist/pikaday.min.css
+  # ---------------------------------------------------------------------------
+  - name: "node:20-alpine"
+    id: "minify-purged-css"
+    entrypoint: "sh"
+    args:
+      - "-c"
+      - |
+        npx postcss dist/styles.css \
+          --config postcss.config.json \
+          --no-map \
+          -o dist/styles.min.css && \
+        npx postcss dist/pikaday.css \
+          --config postcss.config.json \
+          --no-map \
+          -o dist/pikaday.min.css
+    dir: "."
+    waitFor:
+      - "purge-unused-css"
+
+  # ---------------------------------------------------------------------------
+  # Step 4: Build the Docker image
+  #
+  # Multi-stage Dockerfile copies the purged + minified CSS from dist/ into
+  # the production image, ensuring no unused CSS rules reach the final layer.
+  # The --build-arg CSS_SOURCE=dist passes the optimized CSS directory to the
+  # Dockerfile so it uses dist/styles.min.css instead of WebContent/styles.css.
+  # ---------------------------------------------------------------------------
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build-image"
+    args:
+      - "build"
+      - "--tag"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}"
+      - "--tag"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:latest"
+      - "--build-arg"
+      - "CSS_SOURCE=dist"
+      - "--cache-from"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:latest"
+      - "."
+    waitFor:
+      - "minify-purged-css"
+
+  # ---------------------------------------------------------------------------
+  # Step 5: Push the optimized image to Artifact Registry
+  #
+  # Pushes both the commit-SHA-tagged and latest-tagged images to the
+  # Artifact Registry repository. GKE Autopilot pulls from this registry,
+  # benefiting directly from the smaller image size achieved by PurgeCSS.
+  # ---------------------------------------------------------------------------
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push-image"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}"
+    waitFor:
+      - "build-image"
+
+  # ---------------------------------------------------------------------------
+  # Step 6: Deploy to GKE Autopilot
+  #
+  # Updates the Kubernetes Deployment to use the newly built image.
+  # GKE Autopilot right-sizes pod resource requests automatically; smaller
+  # images reduce node provisioning overhead and cold-start latency.
+  # ---------------------------------------------------------------------------
+  - name: "gcr.io/cloud-builders/kubectl"
+    id: "deploy-to-gke"
+    args:
+      - "set"
+      - "image"
+      - "deployment/${_DEPLOYMENT_NAME}"
+      - "${_CONTAINER_NAME}=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}"
+    env:
+      - "CLOUDSDK_COMPUTE_REGION=${_REGION}"
+      - "CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}"
+    waitFor:
+      - "push-image"
+
+# Images to be stored in Artifact Registry after a successful build
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:latest"
+
+# Substitution variables — override these in the Cloud Build trigger or
+# pass them via `gcloud builds submit --substitutions=...`
+substitutions:
+  _REGION: "us-central1"
+  _REPOSITORY: "modresorts-repo"
+  _IMAGE_NAME: "modresorts"
+  _CLUSTER_NAME: "modresorts-autopilot"
+  _DEPLOYMENT_NAME: "modresorts-deployment"
+  _CONTAINER_NAME: "modresorts"
+
+# Build options
+options:
+  # Use a high-CPU machine type to speed up the Maven build in the Dockerfile
+  machineType: "E2_HIGHCPU_8"
+  # Log streaming to Cloud Logging for build observability
+  logging: CLOUD_LOGGING_ONLY
+  # Substitute all variables — fail if any substitution variable is undefined
+  substitutionOption: "MUST_MATCH"
+
+# Build timeout (10 minutes — accommodates Maven dependency download + Docker build)
+timeout: "600s"

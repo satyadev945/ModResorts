@@ -1,0 +1,18 @@
+{
+  "plugins": {
+    "cssnano": {
+      "preset": [
+        "default",
+        {
+          "discardComments": { "removeAll": true },
+          "normalizeWhitespace": true,
+          "minifySelectors": true,
+          "minifyFontValues": true,
+          "minifyParams": true,
+          "reduceIdents": false,
+          "zindex": false
+        }
+      ]
+    }
+  }
+}

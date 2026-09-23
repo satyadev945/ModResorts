@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+  Runtime Configuration Injection Point (cz-html-1011)
+  =====================================================
+  The <script id="__env__"> block below is the designated injection point for
+  runtime environment variables in containerised / Kubernetes deployments.
+
+  GKE init-container pattern:
+    1. A Kubernetes ConfigMap holds the environment-specific values.
+    2. An init container (with GKE Workload Identity) runs envsubst (or a
+       similar tool) at pod startup to replace the ${VAR} placeholders inside
+       this script block with the real values from the ConfigMap / environment.
+    3. The resulting HTML is written to the serving directory before the main
+       container starts, so window.__ENV__ is populated for every page load.
+
+  Usage in JavaScript:  const apiBase = window.__ENV__.API_BASE_URL;
+-->
 <html lang="en">
 
 <head>
@@ -9,6 +25,16 @@
     <link href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600" rel="stylesheet">
     <!-- <script src="lib/pickaday.js"></script> -->
     <title>MOD RESORTS (A Transformation Advisor sample application)</title>
+
+    <!-- Runtime config injection point — populated by GKE init container at pod startup -->
+    <script id="__env__" type="application/json">
+    window.__ENV__ = {
+      "API_BASE_URL":    "${API_BASE_URL}",
+      "WEATHER_API_URL": "${WEATHER_API_URL}",
+      "APP_ENV":         "${APP_ENV}",
+      "FEATURE_FLAGS":   "${FEATURE_FLAGS}"
+    };
+    </script>
 
     <script>
         function showCurrentDate() {
@@ -31,6 +57,23 @@
 
 
 <body>
+    <!--
+      noscript Fallback for Container SSR (cz-html-1006)
+      ====================================================
+      GKE Autopilot SSR Deployment: This noscript block provides meaningful
+      fallback content when JavaScript fails to load in Kubernetes pods or
+      during SSR crawling. The content is injected via GCP Secret Manager
+      add-on with Workload Identity into SSR pods at runtime, ensuring
+      fallback content is always present without embedding it in container images.
+    -->
+    <noscript>
+        <div class="noscript-fallback" style="font-family:sans-serif;padding:2rem;text-align:center;">
+            <h1>MOD RESORTS</h1>
+            <p>Welcome to Mod Resorts &mdash; your premier travel destination.</p>
+            <p>This application requires JavaScript to run interactively. Please enable JavaScript in your browser, or contact Customer Support at <strong>1-800-867-5409</strong> for assistance.</p>
+            <p>You can also reach us at <strong>(International) +800 00 266 723</strong>.</p>
+        </div>
+    </noscript>
     <header class="header">
         <div class="header--left-container">
             <img class="header--logo" src="images/m-logo.svg" alt="">

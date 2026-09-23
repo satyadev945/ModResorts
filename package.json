@@ -1,0 +1,20 @@
+{
+  "name": "modresorts-css-build",
+  "version": "1.0.0",
+  "description": "CSS optimization pipeline for ModResorts production container — cz-css-1004 (minification) and cz-css-1005 (PurgeCSS unused-rule removal) for GKE Autopilot deployments via Google Cloud Build and Artifact Registry.",
+  "private": true,
+  "scripts": {
+    "purge-css": "purgecss --config purgecss.config.js",
+    "minify-css": "postcss WebContent/pikaday.css --use cssnano --no-map -o WebContent/pikaday.css && postcss WebContent/styles.css --use cssnano --no-map -o WebContent/styles.css",
+    "minify-css:ci": "postcss WebContent/pikaday.css --use cssnano --no-map -o dist/pikaday.min.css && postcss WebContent/styles.css --use cssnano --no-map -o dist/styles.min.css",
+    "optimize-css": "npm run purge-css && npm run minify-css",
+    "optimize-css:ci": "purgecss --config purgecss.config.js --output dist/ && postcss dist/styles.css --use cssnano --no-map -o dist/styles.min.css && postcss dist/pikaday.css --use cssnano --no-map -o dist/pikaday.min.css"
+  },
+  "devDependencies": {
+    "@fullhuman/postcss-purgecss": "^6.0.0",
+    "cssnano": "^6.1.2",
+    "postcss": "^8.4.38",
+    "postcss-cli": "^11.0.0",
+    "purgecss": "^6.0.0"
+  }
+}
