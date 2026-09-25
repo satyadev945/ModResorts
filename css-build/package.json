@@ -1,0 +1,20 @@
+{
+  "name": "modresorts-css-build",
+  "version": "1.0.0",
+  "description": "CSS build pipeline for ModResorts – cz-css-1004 (minification) and cz-css-1005 (unused CSS removal via PurgeCSS) remediations",
+  "private": true,
+  "scripts": {
+    "purge": "purgecss --config purgecss.config.js",
+    "minify": "postcss src/*.css --dir dist",
+    "minify:pikaday": "postcss src/pikaday.css --output dist/pikaday.css",
+    "minify:styles": "postcss src/styles.css --output dist/styles.css",
+    "build": "npm run purge && npm run minify"
+  },
+  "devDependencies": {
+    "postcss": "^8.4.38",
+    "postcss-cli": "^11.0.0",
+    "cssnano": "^6.1.2",
+    "@fullhuman/postcss-purgecss": "^5.0.0",
+    "purgecss": "^5.0.0"
+  }
+}

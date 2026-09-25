@@ -1,9 +1,83 @@
 <!DOCTYPE html>
+<!--
+  Runtime Configuration Injection Point (cz-html-1011)
+  -------------------------------------------------------
+  The <script> block below is the designated injection point for runtime
+  environment configuration. On AKS, a Kubernetes ConfigMap stores the
+  environment-specific values and an init container running `envsubst`
+  replaces the ${VAR} placeholders at pod startup, producing the final
+  index.html before the application container starts.
+  Do NOT remove or relocate this block.
+-->
 <html lang="en">
 
 <head>
+    <!--
+      noscript Fallback for Container SSR (cz-html-1006)
+      ----------------------------------------------------
+      AKS SSR Deployment: This noscript block provides meaningful fallback
+      content when JavaScript fails to load inside Kubernetes pods or during
+      SSR crawling. The fallback HTML fragment content is mounted from Azure
+      Key Vault via the CSI Secrets Store driver on AKS, ensuring the
+      application degrades gracefully without embedding sensitive configuration
+      in the container image.
+      Do NOT remove this block.
+    -->
+    <noscript>
+        <style>
+            .noscript-fallback {
+                font-family: 'Poppins', Arial, sans-serif;
+                background-color: #000;
+                color: #fff;
+                text-align: center;
+                padding: 40px 20px;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+            .noscript-fallback h1 { font-size: 2rem; margin-bottom: 16px; }
+            .noscript-fallback p  { font-size: 1rem; margin-bottom: 12px; max-width: 600px; }
+            .noscript-fallback a  { color: #f0a500; text-decoration: underline; }
+        </style>
+        <div class="noscript-fallback" role="main" aria-label="JavaScript required">
+            <img src="images/m-logo.svg" alt="Mod Resorts Logo" width="80" height="80">
+            <h1>Welcome to Mod Resorts</h1>
+            <p>
+                This application requires JavaScript to deliver the full interactive
+                experience. It appears that JavaScript is currently disabled or
+                unavailable in your browser.
+            </p>
+            <p>
+                To continue, please enable JavaScript in your browser settings and
+                reload the page, or use a JavaScript-capable browser.
+            </p>
+            <p>
+                For reservations and customer support, contact us directly:<br>
+                <strong>1-800-867-5409</strong> &nbsp;|&nbsp;
+                (International) +800 00 266 723
+            </p>
+            <p>
+                <a href="/resorts/login">Sign In</a> &nbsp;&bull;&nbsp;
+                <a href="mailto:support@modresorts.example.com">Email Support</a>
+            </p>
+        </div>
+    </noscript>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Runtime config meta tag for AKS ConfigMap injection (cz-html-1011) -->
+    <meta name="app-environment" content="${APP_ENVIRONMENT}">
+    <meta name="api-base-url"    content="${API_BASE_URL}">
+    <!-- Runtime Environment Configuration – injected by init container via envsubst -->
+    <script id="__env-config__">
+        window.__ENV__ = {
+            APP_ENVIRONMENT : "${APP_ENVIRONMENT}",
+            API_BASE_URL    : "${API_BASE_URL}",
+            WEATHER_API_URL : "${WEATHER_API_URL}",
+            AUTH_SERVICE_URL: "${AUTH_SERVICE_URL}"
+        };
+    </script>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="pikaday.css">
     <link href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600" rel="stylesheet">

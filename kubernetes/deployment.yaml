@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modresorts
+  namespace: modresorts
+  labels:
+    app: modresorts
+    version: "2.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: modresorts
+  template:
+    metadata:
+      labels:
+        app: modresorts
+        version: "2.0.0"
+    spec:
+      containers:
+        - name: modresorts
+          image: "{{IMAGE_URI}}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9080
+              name: http
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "UTC"
+            - name: JAVA_OPTS
+              value: "-Xmx512m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+            - name: REDIS_HOST
+              value: "{{REDIS_HOST}}"
+            - name: REDIS_PORT
+              value: "{{REDIS_PORT}}"
+            - name: REDIS_PASSWORD
+              value: "{{REDIS_PASSWORD}}"
+            - name: REDIS_SSL
+              value: "{{REDIS_SSL}}"
+            - name: GRPC_SERVICE_HOST
+              value: "{{GRPC_SERVICE_HOST}}"
+            - name: GRPC_SERVICE_PORT
+              value: "{{GRPC_SERVICE_PORT}}"
+            - name: WEATHER_API_KEY
+              value: "{{WEATHER_API_KEY}}"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /modresorts/health
+              port: 9080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /modresorts/health
+              port: 9080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 30

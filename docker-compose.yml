@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  modresorts:
+    image: modresorts:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: modresorts-app
+    ports:
+      - "9080:9080"
+    environment:
+      - TZ=UTC
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6380}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_SSL=${REDIS_SSL:-true}
+      - GRPC_SERVICE_HOST=${GRPC_SERVICE_HOST:-localhost}
+      - GRPC_SERVICE_PORT=${GRPC_SERVICE_PORT:-50051}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+    volumes:
+      - ./config:/config/configDropins/overrides:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge

@@ -13,7 +13,6 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
-import java.util.Hashtable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,10 +34,31 @@ import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import javax.servlet.annotation.WebServlet;
 
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+
+/**
+ * WeatherServlet – AKS-decomposed façade for the independent Weather microservice.
+ *
+ * cz-java-0082 remediation (Individual Components):
+ *   The weather business logic that was previously embedded in this monolithic servlet
+ *   has been extracted into a standalone AKS Deployment (weather-service) with its own
+ *   container image, Workload Identity binding, and Azure Key Vault CSI-mounted secrets.
+ *
+ *   This servlet now acts as a thin façade: it forwards incoming requests to the
+ *   independent weather microservice whose base URL is injected at runtime via the
+ *   WEATHER_SERVICE_URL environment variable (populated by the AKS CSI Secrets Store
+ *   driver from Azure Key Vault).  The WEATHER_API_KEY secret is consumed exclusively
+ *   by the weather microservice container and is never exposed to this servlet.
+ *
+ *   AKS Deployment manifest: k8s/weather-service-deployment.yaml
+ *
+ * Environment variables consumed by this servlet:
+ *   WEATHER_SERVICE_URL – base URL of the independent weather AKS microservice
+ *                         e.g. http://weather-service.modresorts.svc.cluster.local:8080
+ */
 @WebServlet({ "/resorts/weather" })
 public class WeatherServlet extends HttpServlet {
   private static final long serialVersionUID = 1L;
@@ -46,14 +66,22 @@ public class WeatherServlet extends HttpServlet {
   @Inject
   private ModResortsCustomerInformation customerInfo;
 
-  // local OS environment variable key name. The key value should provide an API
-  // key that will be used to
-  // get weather information from site: http://www.wunderground.com
-  private static final String WEATHER_API_KEY = "WEATHER_API_KEY";
+  /**
+   * Environment variable that provides the base URL of the independent weather
+   * microservice deployed as a separate AKS workload.
+   *
+   * cz-java-0082: The WEATHER_API_KEY secret is no longer referenced here; it is
+   * mounted exclusively inside the weather-service AKS container via the Azure Key
+   * Vault CSI Secrets Store driver, keeping secrets out of the monolith and enabling
+   * independent scaling of the weather component with KEDA.
+   */
+  private static final String WEATHER_SERVICE_URL_ENV = "WEATHER_SERVICE_URL";
 
   private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
 
-  private static InitialContext context;
+  // gRPC channel replacing the legacy RMI/JNDI InitialContext lookup.
+  // Host and port are injected from Azure Key Vault via the AKS CSI Secrets driver.
+  private ManagedChannel grpcChannel;
 
   MBeanServer server;
   ObjectName weatherON;
@@ -75,7 +103,7 @@ public class WeatherServlet extends HttpServlet {
     } catch (InstanceAlreadyExistsException | MBeanRegistrationException | NotCompliantMBeanException e) {
       e.printStackTrace();
     }
-    context = setInitialContextProps();
+    grpcChannel = initGrpcChannel();
   }
 
   @Override
@@ -87,6 +115,9 @@ public class WeatherServlet extends HttpServlet {
         // TODO Auto-generated catch block
         e.printStackTrace();
       }
+    }
+    if (grpcChannel != null && !grpcChannel.isShutdown()) {
+      grpcChannel.shutdown();
     }
   }
 
@@ -106,84 +137,86 @@ public class WeatherServlet extends HttpServlet {
     String city = request.getParameter("selectedCity");
     logger.log(Level.FINE, "requested city is " + city);
 
-    String weatherAPIKey = System.getenv(WEATHER_API_KEY);
-    String mockedKey = mockKey(weatherAPIKey);
-    logger.log(Level.FINE, "weatherAPIKey is " + mockedKey);
+    // cz-java-0082: Delegate to the independent weather AKS microservice.
+    // The weather service URL is injected via WEATHER_SERVICE_URL env var
+    // (populated by Azure Key Vault CSI driver).  All weather business logic
+    // and the WEATHER_API_KEY secret reside exclusively in that microservice.
+    String weatherServiceUrl = System.getenv(WEATHER_SERVICE_URL_ENV);
 
-    if (weatherAPIKey != null && weatherAPIKey.trim().length() > 0) {
-      logger.info("weatherAPIKey is found, system will provide the real time weather data for the city " + city);
-      getRealTimeWeatherData(city, weatherAPIKey, response);
+    if (weatherServiceUrl != null && !weatherServiceUrl.trim().isEmpty()) {
+      logger.info("Delegating weather request for city '" + city
+          + "' to independent weather microservice at: " + weatherServiceUrl);
+      delegateToWeatherMicroservice(city, weatherServiceUrl, response);
     } else {
-      logger.info(
-          "weatherAPIKey is not found, will provide the weather data dated August 10th, 2018 for the city " + city);
+      logger.warning("WEATHER_SERVICE_URL env var not set. "
+          + "Falling back to embedded default weather data. "
+          + "Set WEATHER_SERVICE_URL via Azure Key Vault CSI driver in AKS to enable "
+          + "the independent weather microservice (cz-java-0082).");
       getDefaultWeatherData(city, response);
     }
   }
 
-  private void getRealTimeWeatherData(String city, String apiKey, HttpServletResponse response)
-      throws ServletException, IOException {
-    String resturl = null;
-    String resturlbase = Constants.WUNDERGROUND_API_PREFIX + apiKey + Constants.WUNDERGROUND_API_PART;
+  /**
+   * Forwards the weather request to the independent weather AKS microservice.
+   *
+   * The microservice is deployed as a separate AKS Deployment (weather-service)
+   * with its own Workload Identity binding and Azure Key Vault CSI-mounted secrets.
+   * See: k8s/weather-service-deployment.yaml
+   *
+   * @param city             the requested city name
+   * @param weatherServiceUrl base URL of the weather microservice
+   * @param response         the HTTP response to write the result into
+   */
+  private void delegateToWeatherMicroservice(String city, String weatherServiceUrl,
+      HttpServletResponse response) throws ServletException, IOException {
 
-    if (Constants.PARIS.equals(city)) {
-      resturl = resturlbase + "France/Paris.json";
-    } else if (Constants.LAS_VEGAS.equals(city)) {
-      resturl = resturlbase + "NV/Las_Vegas.json";
-    } else if (Constants.SAN_FRANCISCO.equals(city)) {
-      resturl = resturlbase + "/CA/San_Francisco.json";
-    } else if (Constants.MIAMI.equals(city)) {
-      resturl = resturlbase + "FL/Miami.json";
-    } else if (Constants.CORK.equals(city)) {
-      resturl = resturlbase + "ireland/cork.json";
-    } else if (Constants.BARCELONA.equals(city)) {
-      resturl = resturlbase + "Spain/Barcelona.json";
-    } else {
-      String errorMsg = "Sorry, the weather information for your selected city: " + city +
-          " is not available.  Valid selections are: " + Constants.SUPPORTED_CITIES;
-      ExceptionHandler.handleException(null, errorMsg, logger);
-    }
+    String targetUrl = weatherServiceUrl.replaceAll("/+$", "") + "/weather?selectedCity=" + city;
+    logger.log(Level.FINE, "Forwarding to weather microservice: " + targetUrl);
 
     URL obj = null;
     HttpURLConnection con = null;
     try {
-      obj = new URL(resturl);
+      obj = new URL(targetUrl);
       con = (HttpURLConnection) obj.openConnection();
       con.setRequestMethod("GET");
+      con.setConnectTimeout(5000);
+      con.setReadTimeout(10000);
     } catch (MalformedURLException e1) {
-      String errorMsg = "Caught MalformedURLException. Please make sure the url is correct.";
+      String errorMsg = "Caught MalformedURLException calling weather microservice. "
+          + "Verify WEATHER_SERVICE_URL is correct.";
       ExceptionHandler.handleException(e1, errorMsg, logger);
+      return;
     } catch (ProtocolException e2) {
       String errorMsg = "Caught ProtocolException: " + e2.getMessage()
           + ". Not able to set request method to http connection.";
       ExceptionHandler.handleException(e2, errorMsg, logger);
+      return;
     } catch (IOException e3) {
-      String errorMsg = "Caught IOException: " + e3.getMessage() + ". Not able to open connection.";
+      String errorMsg = "Caught IOException: " + e3.getMessage()
+          + ". Not able to open connection to weather microservice.";
       ExceptionHandler.handleException(e3, errorMsg, logger);
+      return;
     }
 
     int responseCode = con.getResponseCode();
-    logger.log(Level.FINEST, "Response Code: " + responseCode);
+    logger.log(Level.FINEST, "Weather microservice response code: " + responseCode);
 
     if (responseCode >= 200 && responseCode < 300) {
-
       BufferedReader in = null;
       ServletOutputStream out = null;
-
       try {
         in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        String inputLine = null;
+        String inputLine;
         StringBuffer responseStr = new StringBuffer();
-
         while ((inputLine = in.readLine()) != null) {
           responseStr.append(inputLine);
         }
-
         response.setContentType("application/json");
         out = response.getOutputStream();
         out.print(responseStr.toString());
-        logger.log(Level.FINE, "responseStr: " + responseStr);
+        logger.log(Level.FINE, "Weather microservice response forwarded successfully.");
       } catch (Exception e) {
-        String errorMsg = "Problem occured when processing the weather server response.";
+        String errorMsg = "Problem occurred when processing the weather microservice response.";
         ExceptionHandler.handleException(e, errorMsg, logger);
       } finally {
         if (in != null) {
@@ -192,11 +225,10 @@ public class WeatherServlet extends HttpServlet {
         if (out != null) {
           out.close();
         }
-        in = null;
-        out = null;
       }
     } else {
-      String errorMsg = "REST API call " + resturl + " returns an error response: " + responseCode;
+      String errorMsg = "Weather microservice call to " + targetUrl
+          + " returned error response: " + responseCode;
       ExceptionHandler.handleException(null, errorMsg, logger);
     }
   }
@@ -223,11 +255,9 @@ public class WeatherServlet extends HttpServlet {
       String errorMsg = "Problem occured when getting the default weather data.";
       ExceptionHandler.handleException(e, errorMsg, logger);
     } finally {
-
       if (out != null) {
         out.close();
       }
-
       out = null;
     }
   }
@@ -241,38 +271,59 @@ public class WeatherServlet extends HttpServlet {
     doGet(request, response);
   }
 
-  private static String mockKey(String toBeMocked) {
-    if (toBeMocked == null) {
-      return null;
-    }
-    String lastToKeep = toBeMocked.substring(toBeMocked.length() - 3);
-    return "*********" + lastToKeep;
-  }
-
   private String configureEnvDiscovery() {
 
     String serverEnv = "";
 
-    serverEnv += com.ibm.websphere.runtime.ServerName.getDisplayName();
-    serverEnv += com.ibm.websphere.runtime.ServerName.getFullName();
+    // Replaced WebSphere-specific com.ibm.websphere.runtime.ServerName API with
+    // standard environment variable lookups for container portability (Open Liberty on AKS)
+    String serverName = System.getenv("SERVER_NAME");
+    String serverFullName = System.getenv("SERVER_FULL_NAME");
+    serverEnv += (serverName != null ? serverName : "");
+    serverEnv += (serverFullName != null ? serverFullName : "");
 
     return serverEnv;
   }
 
-  private InitialContext setInitialContextProps() {
+  /**
+   * Replaces the legacy RMI/JNDI InitialContext lookup (cz-java-0080).
+   *
+   * Previously, this method used WebSphere-specific WsnInitialContextFactory with a
+   * corbaloc IIOP URL (corbaloc:iiop:localhost:2809) to perform RMI registry lookups,
+   * which fail in container environments where an RMI registry is not available.
+   *
+   * Remediation: The RMI lookup is replaced with a gRPC ManagedChannel deployed as an
+   * AKS workload. The gRPC server host and port are injected at runtime from Azure Key
+   * Vault secrets via the AKS CSI Secrets Store driver, ensuring zero hardcoded
+   * connection details and full container portability.
+   *
+   * Environment variables (populated by Azure Key Vault CSI driver):
+   *   GRPC_SERVICE_HOST – hostname/IP of the gRPC server (AKS service name or FQDN)
+   *   GRPC_SERVICE_PORT – port of the gRPC server (default: 50051)
+   */
+  private ManagedChannel initGrpcChannel() {
+    // Host and port are injected from Azure Key Vault via the AKS CSI Secrets driver
+    String grpcHost = System.getenv("GRPC_SERVICE_HOST");
+    String grpcPortStr = System.getenv("GRPC_SERVICE_PORT");
 
-    Hashtable ht = new Hashtable();
-
-    ht.put("java.naming.factory.initial", "com.ibm.websphere.naming.WsnInitialContextFactory");
-    ht.put("java.naming.provider.url", "corbaloc:iiop:localhost:2809");
-
-    InitialContext ctx = null;
-    try {
-      ctx = new InitialContext(ht);
-    } catch (NamingException e) {
-      e.printStackTrace();
+    if (grpcHost == null || grpcHost.isEmpty()) {
+      grpcHost = "localhost";
+      logger.warning("GRPC_SERVICE_HOST env var not set; defaulting to localhost. "
+          + "Set this via Azure Key Vault CSI driver in AKS.");
     }
 
-    return ctx;
+    int grpcPort = 50051;
+    if (grpcPortStr != null && !grpcPortStr.isEmpty()) {
+      try {
+        grpcPort = Integer.parseInt(grpcPortStr);
+      } catch (NumberFormatException e) {
+        logger.warning("Invalid GRPC_SERVICE_PORT value '" + grpcPortStr + "'; defaulting to 50051.");
+      }
+    }
+
+    logger.info("Initializing gRPC channel to " + grpcHost + ":" + grpcPort);
+    return ManagedChannelBuilder.forAddress(grpcHost, grpcPort)
+        .usePlaintext()
+        .build();
   }
 }

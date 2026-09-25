@@ -1,0 +1,227 @@
+# ============================================================================
+# weather-service-deployment.yaml
+#
+# cz-java-0082 – Individual Components remediation
+#
+# Deploys the Weather microservice as an independent AKS workload, decomposed
+# from the ModResorts monolith.  Each component has:
+#   - Its own container image (independent build & release lifecycle)
+#   - Azure Workload Identity binding (no long-lived credentials in pods)
+#   - Azure Key Vault CSI-mounted secrets (WEATHER_API_KEY injected at runtime)
+#   - KEDA ScaledObject for independent, event-driven horizontal scaling
+#
+# Prerequisites:
+#   1. Azure Workload Identity add-on enabled on the AKS cluster
+#   2. Azure Key Vault with secrets: weather-api-key, grpc-service-host, grpc-service-port
+#   3. SecretProviderClass "weather-service-secrets" created in the same namespace
+#   4. KEDA installed on the cluster (helm install keda kedacore/keda)
+#   5. Container image built and pushed to ACR:
+#        docker build -t <acr>.azurecr.io/weather-service:latest .
+#        docker push <acr>.azurecr.io/weather-service:latest
+# ============================================================================
+
+---
+# ── Namespace ────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modresorts
+  labels:
+    azure.workload.identity/use: "true"
+
+---
+# ── ServiceAccount with Workload Identity binding ────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: weather-service-sa
+  namespace: modresorts
+  annotations:
+    # Replace with the actual Azure Managed Identity client ID
+    azure.workload.identity/client-id: "${WEATHER_SERVICE_IDENTITY_CLIENT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+
+---
+# ── SecretProviderClass – mounts Azure Key Vault secrets as env vars ─────────
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: weather-service-secrets
+  namespace: modresorts
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "false"
+    clientID: "${WEATHER_SERVICE_IDENTITY_CLIENT_ID}"
+    keyvaultName: "${AZURE_KEY_VAULT_NAME}"
+    tenantId: "${AZURE_TENANT_ID}"
+    objects: |
+      array:
+        - |
+          objectName: weather-api-key
+          objectType: secret
+          objectAlias: WEATHER_API_KEY
+        - |
+          objectName: grpc-service-host
+          objectType: secret
+          objectAlias: GRPC_SERVICE_HOST
+        - |
+          objectName: grpc-service-port
+          objectType: secret
+          objectAlias: GRPC_SERVICE_PORT
+  secretObjects:
+    - secretName: weather-service-kv-secrets
+      type: Opaque
+      data:
+        - objectName: WEATHER_API_KEY
+          key: WEATHER_API_KEY
+        - objectName: GRPC_SERVICE_HOST
+          key: GRPC_SERVICE_HOST
+        - objectName: GRPC_SERVICE_PORT
+          key: GRPC_SERVICE_PORT
+
+---
+# ── Deployment ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-service
+  namespace: modresorts
+  labels:
+    app: weather-service
+    component: microservice
+    # cz-java-0082: decomposed from ModResorts monolith
+    decomposed-from: modresorts-monolith
+spec:
+  replicas: 1          # KEDA ScaledObject below manages actual replica count
+  selector:
+    matchLabels:
+      app: weather-service
+  template:
+    metadata:
+      labels:
+        app: weather-service
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: weather-service-sa
+
+      # ── CSI Secrets Store volume ──────────────────────────────────────────
+      volumes:
+        - name: weather-secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: weather-service-secrets
+
+      containers:
+        - name: weather-service
+          # Replace <acr> with your Azure Container Registry name
+          image: "<acr>.azurecr.io/weather-service:latest"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+
+          # ── Mount CSI secrets volume ──────────────────────────────────────
+          volumeMounts:
+            - name: weather-secrets-store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+
+          # ── Environment variables injected from Azure Key Vault secrets ───
+          env:
+            - name: WEATHER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: weather-service-kv-secrets
+                  key: WEATHER_API_KEY
+            - name: GRPC_SERVICE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: weather-service-kv-secrets
+                  key: GRPC_SERVICE_HOST
+            - name: GRPC_SERVICE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: weather-service-kv-secrets
+                  key: GRPC_SERVICE_PORT
+            # Non-secret runtime configuration
+            - name: SERVER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SERVER_FULL_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          # ── Resource limits ───────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # ── Liveness & readiness probes ───────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+
+---
+# ── Service ───────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-service
+  namespace: modresorts
+  labels:
+    app: weather-service
+spec:
+  selector:
+    app: weather-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+---
+# ── KEDA ScaledObject – independent autoscaling for the weather microservice ──
+# cz-java-0082: enables independent scaling separate from the main monolith
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: weather-service-scaledobject
+  namespace: modresorts
+spec:
+  scaleTargetRef:
+    name: weather-service
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 60
+  triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"
+    - type: memory
+      metricType: Utilization
+      metadata:
+        value: "80"
