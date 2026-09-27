@@ -1,0 +1,26 @@
+# Kubernetes Service for the Weather Microservice
+#
+# cz-java-0082: Exposes the independently deployed weather-service within the
+# cluster via a stable DNS name:
+#   http://weather-service.modresorts.svc.cluster.local:9080
+#
+# Other ModResorts microservices (e.g. the front-end) call this DNS name so
+# that the weather component can be scaled or replaced without changing callers.
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-service
+  namespace: modresorts
+  labels:
+    app: weather-service
+    component: weather
+    part-of: modresorts
+spec:
+  selector:
+    app: weather-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 9080
+      targetPort: 9080
+  type: ClusterIP

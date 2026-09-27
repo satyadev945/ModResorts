@@ -1,0 +1,77 @@
+# Kubernetes Deployment for the Weather Microservice
+#
+# cz-java-0082: The WeatherServlet + WeatherService are deployed as an independent
+# microservice on Amazon EKS.  This Deployment is fully decoupled from other
+# ModResorts components (availability, reservations, etc.) so that each service
+# can be scaled, updated, and rolled back independently.
+#
+# Required Kubernetes Secrets (create before deploying):
+#   kubectl create secret generic weather-service-secrets \
+#     --from-literal=WEATHER_API_KEY=<your-api-key> \
+#     -n modresorts
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weather-service
+  namespace: modresorts
+  labels:
+    app: weather-service
+    component: weather
+    part-of: modresorts
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: weather-service
+  template:
+    metadata:
+      labels:
+        app: weather-service
+        component: weather
+        part-of: modresorts
+    spec:
+      containers:
+        - name: weather-service
+          image: modresorts/weather-service:latest
+          ports:
+            - containerPort: 9080
+              name: http
+          env:
+            # API key injected from a Kubernetes Secret — never stored in plain text
+            - name: WEATHER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: weather-service-secrets
+                  key: WEATHER_API_KEY
+            # Non-secret configuration from the ConfigMap
+            - name: WEATHER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: weather-service-config
+                  key: WEATHER_SERVICE_URL
+            - name: SERVICE_DISCOVERY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: weather-service-config
+                  key: SERVICE_DISCOVERY_URL
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

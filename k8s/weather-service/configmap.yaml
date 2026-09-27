@@ -1,0 +1,24 @@
+# Kubernetes ConfigMap for the Weather Microservice
+# Supplies non-secret configuration to the weather-service Deployment.
+# Secret values (e.g. WEATHER_API_KEY) must be stored in a Kubernetes Secret,
+# not in this ConfigMap.
+#
+# cz-java-0082: Each independently deployable microservice component has its own
+# ConfigMap so that configuration can be updated without redeploying other services.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: weather-service-config
+  namespace: modresorts
+  labels:
+    app: weather-service
+    component: weather
+    part-of: modresorts
+data:
+  # Base URL for the Wunderground weather REST API.
+  # Override this value to route through an API gateway or mock server.
+  WEATHER_SERVICE_URL: ""
+
+  # Kubernetes-internal REST service discovery endpoint.
+  # Format: http://<service-name>.<namespace>.svc.cluster.local:<port>/services
+  SERVICE_DISCOVERY_URL: "http://service-registry.modresorts.svc.cluster.local:8080/services"

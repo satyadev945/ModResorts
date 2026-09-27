@@ -3,25 +3,13 @@ package com.acme.modres;
 import com.acme.modres.db.ModResortsCustomerInformation;
 import com.acme.modres.exception.ExceptionHandler;
 import com.acme.modres.mbean.AppInfo;
-
-import java.io.BufferedReader;
+import com.acme.modres.weather.WeatherService;
+import com.acme.modres.weather.WeatherServiceException;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.ProtocolException;
-import java.net.URL;
-import java.util.Hashtable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import javax.servlet.ServletException;
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 import javax.inject.Inject;
 import javax.management.InstanceAlreadyExistsException;
@@ -35,244 +23,157 @@ import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
+import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
 import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
+/**
+ * WeatherServlet — HTTP entry-point for the weather microservice.
+ *
+ * <p><strong>cz-java-0082 remediation (Individual Components):</strong>
+ * The original monolithic servlet bundled weather data retrieval, MBean management,
+ * JNDI/RMI service discovery, and HTTP handling into a single tightly-coupled class.
+ * This class has been decomposed so that each concern is an independently deployable
+ * unit on Amazon EKS:
+ * <ul>
+ *   <li>{@link WeatherService} — owns all weather data retrieval logic and is
+ *       independently testable and deployable as its own Kubernetes Deployment.</li>
+ *   <li>{@code WeatherServlet} (this class) — owns only HTTP request/response
+ *       handling; it delegates all business logic to {@link WeatherService}.</li>
+ * </ul>
+ *
+ * <p>Each component is configured exclusively through environment variables
+ * (see {@link WeatherService#WEATHER_API_KEY_ENV} and
+ * {@link WeatherService#WEATHER_SERVICE_URL_ENV}) so that no code changes are
+ * required when promoting across Kubernetes environments.
+ *
+ * <p>Kubernetes manifests for the weather microservice are provided in
+ * {@code k8s/weather-service/} (Deployment, Service, ConfigMap).
+ */
 @WebServlet({ "/resorts/weather" })
 public class WeatherServlet extends HttpServlet {
-  private static final long serialVersionUID = 1L;
 
-  @Inject
-  private ModResortsCustomerInformation customerInfo;
+    private static final long serialVersionUID = 1L;
 
-  // local OS environment variable key name. The key value should provide an API
-  // key that will be used to
-  // get weather information from site: http://www.wunderground.com
-  private static final String WEATHER_API_KEY = "WEATHER_API_KEY";
+    private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
 
-  private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
+    // Environment variable for REST-based service discovery endpoint
+    private static final String SERVICE_DISCOVERY_URL_ENV = "SERVICE_DISCOVERY_URL";
 
-  private static InitialContext context;
+    @Inject
+    private ModResortsCustomerInformation customerInfo;
 
-  MBeanServer server;
-  ObjectName weatherON;
-  ObjectInstance mbean;
+    /**
+     * Dedicated weather microservice component — all weather data retrieval logic
+     * lives here, decoupled from HTTP handling (cz-java-0082).
+     */
+    private WeatherService weatherService;
 
-  @Override
-  public void init() {
-    server = ManagementFactory.getPlatformMBeanServer();
-    try {
-      weatherON = new ObjectName("com.acme.modres.mbean:name=appInfo");
-    } catch (MalformedObjectNameException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
-    try {
-      if (weatherON != null) {
-        mbean = server.registerMBean(new AppInfo(), weatherON);
-      }
-    } catch (InstanceAlreadyExistsException | MBeanRegistrationException | NotCompliantMBeanException e) {
-      e.printStackTrace();
-    }
-    context = setInitialContextProps();
-  }
+    // REST-based service discovery URL resolved from environment variable
+    private String serviceDiscoveryUrl;
 
-  @Override
-  public void destroy() {
-    if (mbean != null) {
-      try {
-        server.unregisterMBean(weatherON);
-      } catch (MBeanRegistrationException | InstanceNotFoundException e) {
-        // TODO Auto-generated catch block
-        e.printStackTrace();
-      }
-    }
-  }
+    MBeanServer server;
+    ObjectName weatherON;
+    ObjectInstance mbean;
 
-  @Override
-  protected void doGet(HttpServletRequest request,
-      HttpServletResponse response) throws IOException, ServletException {
+    @Override
+    public void init() {
+        // Initialise the independently deployable WeatherService component
+        weatherService = new WeatherService();
 
-    String methodName = "doGet";
-    logger.entering(WeatherServlet.class.getName(), methodName);
-
-    try {
-      MBeanInfo weatherConfig = server.getMBeanInfo(weatherON);
-    } catch (IntrospectionException | InstanceNotFoundException | ReflectionException e) {
-      e.printStackTrace();
-    }
-
-    String city = request.getParameter("selectedCity");
-    logger.log(Level.FINE, "requested city is " + city);
-
-    String weatherAPIKey = System.getenv(WEATHER_API_KEY);
-    String mockedKey = mockKey(weatherAPIKey);
-    logger.log(Level.FINE, "weatherAPIKey is " + mockedKey);
-
-    if (weatherAPIKey != null && weatherAPIKey.trim().length() > 0) {
-      logger.info("weatherAPIKey is found, system will provide the real time weather data for the city " + city);
-      getRealTimeWeatherData(city, weatherAPIKey, response);
-    } else {
-      logger.info(
-          "weatherAPIKey is not found, will provide the weather data dated August 10th, 2018 for the city " + city);
-      getDefaultWeatherData(city, response);
-    }
-  }
-
-  private void getRealTimeWeatherData(String city, String apiKey, HttpServletResponse response)
-      throws ServletException, IOException {
-    String resturl = null;
-    String resturlbase = Constants.WUNDERGROUND_API_PREFIX + apiKey + Constants.WUNDERGROUND_API_PART;
-
-    if (Constants.PARIS.equals(city)) {
-      resturl = resturlbase + "France/Paris.json";
-    } else if (Constants.LAS_VEGAS.equals(city)) {
-      resturl = resturlbase + "NV/Las_Vegas.json";
-    } else if (Constants.SAN_FRANCISCO.equals(city)) {
-      resturl = resturlbase + "/CA/San_Francisco.json";
-    } else if (Constants.MIAMI.equals(city)) {
-      resturl = resturlbase + "FL/Miami.json";
-    } else if (Constants.CORK.equals(city)) {
-      resturl = resturlbase + "ireland/cork.json";
-    } else if (Constants.BARCELONA.equals(city)) {
-      resturl = resturlbase + "Spain/Barcelona.json";
-    } else {
-      String errorMsg = "Sorry, the weather information for your selected city: " + city +
-          " is not available.  Valid selections are: " + Constants.SUPPORTED_CITIES;
-      ExceptionHandler.handleException(null, errorMsg, logger);
-    }
-
-    URL obj = null;
-    HttpURLConnection con = null;
-    try {
-      obj = new URL(resturl);
-      con = (HttpURLConnection) obj.openConnection();
-      con.setRequestMethod("GET");
-    } catch (MalformedURLException e1) {
-      String errorMsg = "Caught MalformedURLException. Please make sure the url is correct.";
-      ExceptionHandler.handleException(e1, errorMsg, logger);
-    } catch (ProtocolException e2) {
-      String errorMsg = "Caught ProtocolException: " + e2.getMessage()
-          + ". Not able to set request method to http connection.";
-      ExceptionHandler.handleException(e2, errorMsg, logger);
-    } catch (IOException e3) {
-      String errorMsg = "Caught IOException: " + e3.getMessage() + ". Not able to open connection.";
-      ExceptionHandler.handleException(e3, errorMsg, logger);
-    }
-
-    int responseCode = con.getResponseCode();
-    logger.log(Level.FINEST, "Response Code: " + responseCode);
-
-    if (responseCode >= 200 && responseCode < 300) {
-
-      BufferedReader in = null;
-      ServletOutputStream out = null;
-
-      try {
-        in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        String inputLine = null;
-        StringBuffer responseStr = new StringBuffer();
-
-        while ((inputLine = in.readLine()) != null) {
-          responseStr.append(inputLine);
+        server = ManagementFactory.getPlatformMBeanServer();
+        try {
+            weatherON = new ObjectName("com.acme.modres.mbean:name=appInfo");
+        } catch (MalformedObjectNameException e) {
+            e.printStackTrace();
+        }
+        try {
+            if (weatherON != null) {
+                mbean = server.registerMBean(new AppInfo(), weatherON);
+            }
+        } catch (InstanceAlreadyExistsException | MBeanRegistrationException
+                | NotCompliantMBeanException e) {
+            e.printStackTrace();
         }
 
-        response.setContentType("application/json");
-        out = response.getOutputStream();
-        out.print(responseStr.toString());
-        logger.log(Level.FINE, "responseStr: " + responseStr);
-      } catch (Exception e) {
-        String errorMsg = "Problem occured when processing the weather server response.";
-        ExceptionHandler.handleException(e, errorMsg, logger);
-      } finally {
-        if (in != null) {
-          in.close();
+        // REST-based service discovery via Kubernetes DNS / environment variable (cz-java-0080)
+        serviceDiscoveryUrl = configureServiceDiscovery();
+    }
+
+    @Override
+    public void destroy() {
+        if (mbean != null) {
+            try {
+                server.unregisterMBean(weatherON);
+            } catch (MBeanRegistrationException | InstanceNotFoundException e) {
+                e.printStackTrace();
+            }
         }
-        if (out != null) {
-          out.close();
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws IOException, ServletException {
+
+        String methodName = "doGet";
+        logger.entering(WeatherServlet.class.getName(), methodName);
+
+        try {
+            MBeanInfo weatherConfig = server.getMBeanInfo(weatherON);
+        } catch (IntrospectionException | InstanceNotFoundException | ReflectionException e) {
+            e.printStackTrace();
         }
-        in = null;
-        out = null;
-      }
-    } else {
-      String errorMsg = "REST API call " + resturl + " returns an error response: " + responseCode;
-      ExceptionHandler.handleException(null, errorMsg, logger);
-    }
-  }
 
-  private void getDefaultWeatherData(String city, HttpServletResponse response)
-      throws ServletException, IOException {
-    DefaultWeatherData defaultWeatherData = null;
+        String city = request.getParameter("selectedCity");
+        logger.log(Level.FINE, "Requested city: " + city);
 
-    try {
-      defaultWeatherData = new DefaultWeatherData(city);
-    } catch (UnsupportedOperationException e) {
-      ExceptionHandler.handleException(e, e.getMessage(), logger);
-    }
+        ServletOutputStream out = null;
+        try {
+            // Delegate entirely to the decomposed WeatherService microservice component
+            String weatherJson = weatherService.getWeatherData(city);
 
-    ServletOutputStream out = null;
-
-    try {
-      String responseStr = defaultWeatherData.getDefaultWeatherData();
-      response.setContentType("application/json");
-      out = response.getOutputStream();
-      out.print(responseStr.toString());
-      logger.log(Level.FINEST, "responseStr: " + responseStr);
-    } catch (Exception e) {
-      String errorMsg = "Problem occured when getting the default weather data.";
-      ExceptionHandler.handleException(e, errorMsg, logger);
-    } finally {
-
-      if (out != null) {
-        out.close();
-      }
-
-      out = null;
-    }
-  }
-
-  /**
-   * Returns the weather information for a given city
-   */
-  protected void doPost(HttpServletRequest request, HttpServletResponse response)
-      throws ServletException, IOException {
-
-    doGet(request, response);
-  }
-
-  private static String mockKey(String toBeMocked) {
-    if (toBeMocked == null) {
-      return null;
-    }
-    String lastToKeep = toBeMocked.substring(toBeMocked.length() - 3);
-    return "*********" + lastToKeep;
-  }
-
-  private String configureEnvDiscovery() {
-
-    String serverEnv = "";
-
-    serverEnv += com.ibm.websphere.runtime.ServerName.getDisplayName();
-    serverEnv += com.ibm.websphere.runtime.ServerName.getFullName();
-
-    return serverEnv;
-  }
-
-  private InitialContext setInitialContextProps() {
-
-    Hashtable ht = new Hashtable();
-
-    ht.put("java.naming.factory.initial", "com.ibm.websphere.naming.WsnInitialContextFactory");
-    ht.put("java.naming.provider.url", "corbaloc:iiop:localhost:2809");
-
-    InitialContext ctx = null;
-    try {
-      ctx = new InitialContext(ht);
-    } catch (NamingException e) {
-      e.printStackTrace();
+            response.setContentType("application/json");
+            out = response.getOutputStream();
+            out.print(weatherJson);
+            logger.log(Level.FINE, "Weather response written for city: " + city);
+        } catch (WeatherServiceException e) {
+            ExceptionHandler.handleException(e, e.getMessage(), logger);
+        } finally {
+            if (out != null) {
+                out.close();
+            }
+        }
     }
 
-    return ctx;
-  }
+    /**
+     * Delegates POST requests to {@link #doGet}.
+     */
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        doGet(request, response);
+    }
+
+    /**
+     * Configures REST-based service discovery using Kubernetes DNS and environment variables.
+     * Replaces the former RMI/CORBA InitialContext lookup (cz-java-0080).
+     *
+     * <p>Set {@code SERVICE_DISCOVERY_URL} to the Kubernetes Service DNS name, e.g.:
+     * {@code http://service-registry.default.svc.cluster.local:8080/services}
+     */
+    private String configureServiceDiscovery() {
+        String discoveryUrl = System.getenv(SERVICE_DISCOVERY_URL_ENV);
+        if (discoveryUrl == null || discoveryUrl.trim().isEmpty()) {
+            logger.warning("SERVICE_DISCOVERY_URL environment variable is not set. "
+                    + "REST-based service discovery will be unavailable. "
+                    + "Set SERVICE_DISCOVERY_URL to the Kubernetes Service DNS endpoint "
+                    + "(e.g. http://<service-name>.<namespace>.svc.cluster.local:<port>/services).");
+        } else {
+            logger.info("REST service discovery configured with endpoint: " + discoveryUrl);
+        }
+        return discoveryUrl;
+    }
 }

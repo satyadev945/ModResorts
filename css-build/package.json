@@ -1,0 +1,17 @@
+{
+  "name": "modresorts-css-build",
+  "version": "1.0.0",
+  "description": "PostCSS/cssnano + PurgeCSS build step for ModResorts EKS container. Removes unused CSS rules (cz-css-1005) and minifies remaining CSS (cz-css-1004) before packaging into the production image.",
+  "private": true,
+  "scripts": {
+    "minify": "postcss src/*.css --dir dist",
+    "minify:pikaday": "postcss src/pikaday.css --output dist/pikaday.css",
+    "minify:styles": "postcss src/styles.css --output dist/styles.css"
+  },
+  "devDependencies": {
+    "postcss": "^8.4.38",
+    "postcss-cli": "^11.0.0",
+    "cssnano": "^6.1.2",
+    "@fullhuman/postcss-purgecss": "^6.0.0"
+  }
+}

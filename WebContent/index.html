@@ -1,7 +1,35 @@
 <!DOCTYPE html>
+<!--
+  CONTAINERIZATION NOTE (cz-html-1011):
+  The window.__ENV__ script block below is the designated runtime configuration
+  injection point for container deployments. In Kubernetes/EKS, an init container
+  reads a ConfigMap and rewrites this placeholder with actual environment-specific
+  values before the application container starts. The pattern used is:
+
+    initContainers:
+      - name: inject-env-config
+        image: busybox
+        command: ['sh', '-c', 'envsubst < /config/env-config.js.tmpl > /html/env-config.js']
+        volumeMounts:
+          - name: html-volume
+            mountPath: /html
+          - name: config-volume
+            mountPath: /config
+-->
 <html lang="en">
 
 <head>
+    <!--
+      CONTAINERIZATION NOTE (cz-html-1006):
+      noscript SSR fallback content injected for EKS/Kubernetes container deployments.
+      This block is rendered by SSR crawlers and JavaScript-disabled clients, ensuring
+      meaningful content is available when JavaScript fails to load in Kubernetes pods.
+      In EKS deployments, this content can be overridden via Kubernetes ConfigMap injection
+      using an init container that rewrites this block with environment-specific fallback HTML.
+    -->
+    <noscript>
+        <style>.js-hero { display: none; }</style>
+    </noscript>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css">
@@ -9,6 +37,24 @@
     <link href="https://fonts.googleapis.com/css?family=Poppins:300,400,500,600" rel="stylesheet">
     <!-- <script src="lib/pickaday.js"></script> -->
     <title>MOD RESORTS (A Transformation Advisor sample application)</title>
+
+    <!--
+      Runtime Configuration Injection Point (cz-html-1011)
+      ======================================================
+      This script block is the designated injection point for runtime environment
+      configuration. In containerized deployments on EKS/Kubernetes, an init
+      container replaces this placeholder with a generated env-config.js sourced
+      from a Kubernetes ConfigMap, making all window.__ENV__ values available
+      before any application scripts execute.
+
+      To use: reference values as window.__ENV__.API_BASE_URL, etc.
+    -->
+    <script id="__env_config__">
+        window.__ENV__ = window.__ENV__ || {};
+        window.__ENV__.API_BASE_URL   = window.__ENV__.API_BASE_URL   || "${API_BASE_URL}";
+        window.__ENV__.WEATHER_API_KEY = window.__ENV__.WEATHER_API_KEY || "${WEATHER_API_KEY}";
+        window.__ENV__.APP_ENV        = window.__ENV__.APP_ENV        || "${APP_ENV}";
+    </script>
 
     <script>
         function showCurrentDate() {
@@ -31,6 +77,30 @@
 
 
 <body>
+    <!--
+      CONTAINERIZATION NOTE (cz-html-1006):
+      noscript SSR fallback body content for EKS/Kubernetes container deployments.
+      Rendered when JavaScript is disabled or fails to load in container pods.
+      Kubernetes ConfigMap injection can replace this block with environment-specific content.
+    -->
+    <noscript>
+        <div style="font-family: sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px;">
+            <h1 style="color: #333;">MOD RESORTS</h1>
+            <p style="color: #555;">Welcome to Mod Resorts &mdash; your premier travel destination service.</p>
+            <p style="color: #555;">This application requires JavaScript to be enabled for full functionality.</p>
+            <h2 style="color: #333;">Our Destinations</h2>
+            <ul>
+                <li>Paris, France</li>
+                <li>Las Vegas, USA</li>
+                <li>Cork, Ireland</li>
+                <li>San Francisco, USA</li>
+                <li>Miami, USA</li>
+                <li>Barcelona, Spain</li>
+            </ul>
+            <p style="color: #555;">Please enable JavaScript in your browser to search destinations, check weather, and make reservations.</p>
+            <p style="color: #555;">Customer Support: 1-800-867-5409</p>
+        </div>
+    </noscript>
     <header class="header">
         <div class="header--left-container">
             <img class="header--logo" src="images/m-logo.svg" alt="">
