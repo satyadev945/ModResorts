@@ -1,8 +1,7 @@
 package com.acme.modres.db;
 
-import javax.annotation.Resource;
-import javax.ejb.Singleton;
-import javax.ejb.Startup;
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,13 +9,21 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
-@Singleton
-@Startup
+/**
+ * Migrated from EJB 2.x (@Singleton/@Startup) to Spring Boot @Service.
+ * The EJB container-managed lifecycle annotations (javax.ejb.Singleton,
+ * javax.ejb.Startup) have been replaced with Spring's @Service stereotype,
+ * and the DataSource is now injected via Spring's @Autowired mechanism
+ * (backed by HikariCP / AWS RDS in the cloud environment).
+ *
+ * Rule: cr-java-0085 – EJB 2.x Usage
+ */
+@Service
 public class ModResortsCustomerInformation {
   private static final String SELECT_CUSTOMERS_QUERY = "SELECT INFO FROM CUSTOMER";
 
-  // Removing DB connection for ease of demo setup
-  // @Resource(lookup = "jdbc/ModResortsJndi")
+  // DataSource injected by Spring (configured via HikariCP / AWS RDS datasource bean)
+  @Autowired(required = false)
   private DataSource dataSource;
 
   public ArrayList<String> getCustomerInformation() {
