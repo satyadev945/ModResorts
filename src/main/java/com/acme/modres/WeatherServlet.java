@@ -17,6 +17,14 @@ import java.util.Hashtable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
+import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
+
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServlet;
@@ -46,10 +54,18 @@ public class WeatherServlet extends HttpServlet {
   @Inject
   private ModResortsCustomerInformation customerInfo;
 
-  // local OS environment variable key name. The key value should provide an API
-  // key that will be used to
-  // get weather information from site: http://www.wunderground.com
+  // The weather API key (used to get weather information from site:
+  // http://www.wunderground.com) is stored in AWS Secrets Manager. The
+  // environment variable below holds only the NAME/ARN of the secret (not the
+  // secret itself). The secret value may be a plain string or a JSON object with
+  // a "WEATHER_API_KEY" field.
   private static final String WEATHER_API_KEY = "WEATHER_API_KEY";
+  private static final String WEATHER_API_KEY_SECRET_ID = "WEATHER_API_KEY_SECRET_ID";
+  // Short cache so that secret rotation is picked up without calling Secrets Manager on every request
+  private static final long SECRET_CACHE_TTL_MS = 5 * 60 * 1000L;
+  private static volatile String cachedApiKey;
+  private static volatile long cachedApiKeyTime;
+  private static volatile SecretsManagerClient secretsClient;
 
   private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
 
@@ -106,7 +122,7 @@ public class WeatherServlet extends HttpServlet {
     String city = request.getParameter("selectedCity");
     logger.log(Level.FINE, "requested city is " + city);
 
-    String weatherAPIKey = System.getenv(WEATHER_API_KEY);
+    String weatherAPIKey = getWeatherApiKey();
     String mockedKey = mockKey(weatherAPIKey);
     logger.log(Level.FINE, "weatherAPIKey is " + mockedKey);
 
@@ -239,6 +255,52 @@ public class WeatherServlet extends HttpServlet {
       throws ServletException, IOException {
 
     doGet(request, response);
+  }
+
+  /**
+   * Retrieves the weather API key from AWS Secrets Manager. Returns null when no
+   * secret is configured or it cannot be retrieved, in which case default
+   * weather data is served.
+   */
+  private static String getWeatherApiKey() {
+    String secretId = System.getenv(WEATHER_API_KEY_SECRET_ID);
+    if (secretId == null || secretId.trim().isEmpty()) {
+      logger.warning(WEATHER_API_KEY_SECRET_ID + " is not set; weather API key cannot be retrieved from AWS Secrets Manager");
+      return null;
+    }
+
+    long now = System.currentTimeMillis();
+    String cached = cachedApiKey;
+    if (cached != null && now - cachedApiKeyTime < SECRET_CACHE_TTL_MS) {
+      return cached;
+    }
+
+    try {
+      if (secretsClient == null) {
+        synchronized (WeatherServlet.class) {
+          if (secretsClient == null) {
+            secretsClient = SecretsManagerClient.create();
+          }
+        }
+      }
+      GetSecretValueResponse result = secretsClient.getSecretValue(
+          GetSecretValueRequest.builder().secretId(secretId.trim()).build());
+      String secret = result.secretString();
+      if (secret != null) {
+        String value = secret.trim();
+        if (value.startsWith("{")) {
+          JsonObject json = JsonParser.parseString(value).getAsJsonObject();
+          JsonElement element = json.get(WEATHER_API_KEY);
+          value = (element != null && !element.isJsonNull()) ? element.getAsString() : null;
+        }
+        cachedApiKey = value;
+        cachedApiKeyTime = now;
+        return value;
+      }
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "Unable to retrieve weather API key from AWS Secrets Manager: " + e.getMessage());
+    }
+    return null;
   }
 
   private static String mockKey(String toBeMocked) {

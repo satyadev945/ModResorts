@@ -8,11 +8,39 @@
 {
     'use strict';
 
+    // Structured error reporting for optional dependency loading failures.
+    // Emits a JSON log entry (collected by CloudWatch Logs / CloudWatch RUM) and,
+    // if configured, forwards the event to a backend endpoint that publishes
+    // CloudWatch metrics and sends unrecoverable errors to an SQS DLQ.
+    function reportError(operation, err)
+    {
+        var entry = {
+            level: 'WARN',
+            component: 'pikaday',
+            operation: operation,
+            errorMessage: err && err.message ? err.message : String(err),
+            errorName: err && err.name ? err.name : 'Error',
+            metric: 'PikadayOptionalDependencyLoadFailure',
+            timestamp: new Date().toISOString()
+        };
+        try {
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn(JSON.stringify(entry));
+            }
+            var endpoint = root && root.PIKADAY_ERROR_ENDPOINT;
+            if (endpoint && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+                navigator.sendBeacon(endpoint, JSON.stringify(entry));
+            }
+        } catch (ignore) {
+            // reporting must never break the host application
+        }
+    }
+
     var moment;
     if (typeof exports === 'object') {
         // CommonJS module
         // Load moment.js as an optional dependency
-        try { moment = require('moment'); } catch (e) {}
+        try { moment = require('moment'); } catch (e) { reportError('require-moment', e); }
         module.exports = factory(moment);
     } else if (typeof define === 'function' && define.amd) {
         // AMD. Register as an anonymous module.
@@ -20,7 +48,7 @@
         {
             // Load moment.js as an optional dependency
             var id = 'moment';
-            try { moment = req(id); } catch (e) {}
+            try { moment = req(id); } catch (e) { reportError('amd-require-moment', e); }
             return factory(moment);
         });
     } else {
